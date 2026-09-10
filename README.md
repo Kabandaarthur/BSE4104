@@ -67,8 +67,6 @@ BSE4104/
 | Foundation model | **TBD (Week 2)** — see `docs/evaluation/` for the Model Selection Note once written | Final choice documented with cost/latency/privacy rationale |
 | Vector store (RAG, Week 3+) | **ChromaDB** (proposed) | Free, local, simple to set up for a 10–50 document corpus |
 
-> **If your local setup differs from this (e.g. you're more comfortable in another language), raise it in the group chat immediately** — this decision should be locked in before Tumukunde's integration work goes further, not changed mid-project.
-
 ---
 
 ## 5. Weekly Rhythm — What "Done" Looks Like Each Week
@@ -129,5 +127,3 @@ pip install -r requirements.txt
 - **Blocked on someone else's task?** Say so in the group chat immediately — don't sit idle until the weekly check-in.
 
 ---
-
-*Maintained by Kabanda Arthur (Project/Requirements Lead). Update this file whenever the team structure, stack, or workflow changes — it should always reflect how we actually work, not how we planned to on day one.*
