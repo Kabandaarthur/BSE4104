@@ -1,17 +1,9 @@
-# Week 2 requirements — everything needed to run the app and tests today.
-# Nothing speculative or commented-out: add RAG/vector-store packages in
-# Week 3 when that work actually starts, not before.
-
-fastapi==0.115.0
-uvicorn[standard]==0.32.0
-python-dotenv==1.0.1
-pydantic==2.12.5
-
 # Testing
 pytest==8.3.3
 httpx==0.27.2
 
-# Model provider SDK — TODO: replace this line once Ariko confirms the
-# provider in the Model Selection Note. Only one SDK should be listed
-# here; installing several you don't use is dead weight.
-# openai==1.51.0
+openai>=2.44.0
+python-dotenv>=1.2.2
+fastapi>=0.138.0
+uvicorn>=0.49.0
+pydantic==2.12.5
