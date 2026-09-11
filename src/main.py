@@ -11,17 +11,49 @@ Run:
 
 import sys
 
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+
 from model_client import chat, ModelClientError
 from prompt_loader import load_prompt_spec
 
 
+app = FastAPI(title="University Student-Support Case Agent")
+
+
+class ChatRequest(BaseModel):
+    message: str
+
+
+class ChatResponse(BaseModel):
+    reply: str
+
+
+def call_model(system_prompt: str, user_message: str) -> str:
+    """Send one user message through the isolated model client."""
+    return chat(
+        [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message},
+        ]
+    )
+
+
 def ask(user_message: str) -> str:
-    system_prompt = load_prompt_spec()
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_message},
-    ]
-    return chat(messages)
+    return call_model(load_prompt_spec(), user_message)
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.post("/chat", response_model=ChatResponse)
+def chat_endpoint(request: ChatRequest) -> ChatResponse:
+    try:
+        return ChatResponse(reply=ask(request.message))
+    except ModelClientError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
 
 
 def main():
