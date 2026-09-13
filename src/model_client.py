@@ -52,13 +52,15 @@ def _provider_config(provider=None):
         )
     return name, PROVIDERS[name]
 
-
 def get_client(provider=None):
     name, config = _provider_config(provider)
-    api_key = os.getenv(config["api_key_env"]) if config["api_key_env"] else "ollama"
+    if name == "gemini":
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    else:
+        api_key = os.getenv(config["api_key_env"]) if config["api_key_env"] else "ollama"
     if not api_key:
         raise ModelClientError(
-            f"Missing {config['api_key_env']} for provider '{name}'. "
+            f"Missing {config['api_key_env']} or GOOGLE_API_KEY for provider '{name}'. "
             "Set it in .env before calling the model (see .env.example)."
         )
     return OpenAI(base_url=config["base_url"], api_key=api_key)
