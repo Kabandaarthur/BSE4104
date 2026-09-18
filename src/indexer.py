@@ -18,7 +18,13 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from chunker import CHUNK_OVERLAP, CHUNK_SIZE, ChunkerError, chunk_corpus
+from chunker import (
+    CHUNK_OVERLAP,
+    CHUNK_SIZE,
+    DEFAULT_CORPUS_DIR,
+    ChunkerError,
+    chunk_corpus,
+)
 from embeddings import get_embedding_function
 
 load_dotenv()
@@ -57,6 +63,7 @@ def _open_collection(index_dir, reset=False, embedding_function=None):
 
 def build_index(
     index_dir=DEFAULT_INDEX_DIR,
+    corpus_dir=DEFAULT_CORPUS_DIR,
     force=False,
     chunk_size=CHUNK_SIZE,
     overlap=CHUNK_OVERLAP,
@@ -76,7 +83,7 @@ def build_index(
     )
 
     try:
-        chunks, per_source = chunk_corpus(chunk_size=chunk_size, overlap=overlap)
+        chunks, per_source = chunk_corpus(corpus_dir, chunk_size=chunk_size, overlap=overlap)
     except ChunkerError as error:
         raise IndexError(str(error)) from error
 
@@ -97,6 +104,7 @@ def build_index(
         {
             "source": chunk.source,
             "title": chunk.title,
+            "kind": chunk.kind,
             "heading": chunk.heading,
             "chunk_index": chunk.chunk_index,
         }

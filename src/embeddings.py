@@ -14,6 +14,7 @@ download ~90 MB from HuggingFace once on first use.
 """
 
 import os
+import time
 from typing import Dict, List
 
 import requests
@@ -26,11 +27,40 @@ load_dotenv()
 DEFAULT_PROVIDER = os.getenv("RAG_EMBEDDING_PROVIDER", "gemini")
 GEMINI_EMBEDDING_MODEL = os.getenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-2")
 GEMINI_REST_BASE = os.getenv("GEMINI_REST_BASE", "https://generativelanguage.googleapis.com/v1beta")
-BATCH_LIMIT = 64
+BATCH_LIMIT = int(os.getenv("RAG_EMBED_BATCH", "16"))
+RETRY_ATTEMPTS = int(os.getenv("RAG_EMBED_RETRIES", "6"))
+RETRY_BACKOFF = 5  # seconds; doubles after each attempt (capped at 60)
 
 
 class EmbeddingError(RuntimeError):
     pass
+
+
+def _retryable(status_code):
+    return status_code in {429, 500, 502, 503, 504}
+
+
+def _post_with_retry(url, **kwargs):
+    """POST with exponential backoff on transient errors (quota/5xx)."""
+    delay = RETRY_BACKOFF
+    for attempt in range(1, RETRY_ATTEMPTS + 1):
+        response = requests.post(url, **kwargs)
+        if response.status_code == 200:
+            return response
+        if not _retryable(response.status_code):
+            break
+        retry_after = response.headers.get("Retry-After")
+        wait = delay
+        if retry_after and retry_after.isdigit():
+            wait = max(delay, min(int(retry_after), 60))
+        print(f"[embeddings] {response.status_code} on attempt {attempt}/{RETRY_ATTEMPTS}; "
+              f"retrying in {wait}s", flush=True)
+        time.sleep(wait)
+        delay = min(delay * 2, 60)
+    raise EmbeddingError(
+        f"Gemini embeddings request failed ({response.status_code}): "
+        f"{response.text[:300]}"
+    )
 
 
 class GeminiEmbeddingFunction(EmbeddingFunction):
@@ -51,17 +81,12 @@ class GeminiEmbeddingFunction(EmbeddingFunction):
         embeddings = []
         for start in range(0, len(input), BATCH_LIMIT):
             batch = input[start : start + BATCH_LIMIT]
-            response = requests.post(
+            response = _post_with_retry(
                 f"{self.base_url}/models/{self.model}:batchEmbedContents",
                 params={"key": api_key},
                 timeout=60,
                 json={"requests": [self._request(text) for text in batch]},
             )
-            if response.status_code != 200:
-                raise EmbeddingError(
-                    f"Gemini embeddings request failed ({response.status_code}): "
-                    f"{response.text[:300]}"
-                )
             for payload in response.json().get("embeddings", []):
                 values = payload.get("values")
                 if not values:

@@ -116,8 +116,10 @@ cd BSE4104
 cp .env.example .env        # then fill in your own local API key — never commit .env
 pip install -r requirements.txt
 
-# Week 3+ RAG: build the knowledge index (uses GEMINI_API_KEY for embeddings)
-python src/indexer.py --force   # rebuild after editing knowledge/corpus/*
+# Week 3+ RAG: build the knowledge index (uses GEMINI_API_KEY for embeddings).
+# Corpus is knowledge/text/* (extracted from the PDFs/HTML in knowledge/raw by
+# src/fetch_corpus.py). Re-fetch/re-extract first when the corpus changes.
+python src/indexer.py --force   # rebuild after editing knowledge/text/*
 python src/indexer.py --status  # check what the index holds
 
 # Run the agent

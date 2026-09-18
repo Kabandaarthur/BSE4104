@@ -1,144 +1,92 @@
-# Week 3 RAG Implementation — Work Log
+# Week 3 RAG — Personal Contribution Log
 
-**Date:** 17 September 2026
-**Scope:** RAG retrieval logic (chunking + indexing pipeline + retrieval) and Prompt Specification v2.0
-**Branch:** `main`
-**Status:** Implemented, tested (19/19 passing), verified live against the real model
+**Contributor:** <ARIKO SOSSY JOEL> *(AI Engineering / Application Integration)*
+**Date:** 18 September 2026
+**Branch:** `rag` (pushed to `origin/rag`)
+**Status:** Implemented, tested (21/21 passing), verified live against the real model
 
----
-
-## 1. What was built
-
-Three new `src/` modules plus a redesigned prompt version, wired into the
-existing Week 2 app:
-
-| Module | Purpose |
-|---|---|
-| `src/chunker.py` | Loads `knowledge/corpus/*.md`, splits each document on markdown headings, then packs paragraphs into chunks (default 800 chars, 80-char overlap). Each chunk keeps `source`, `title`, `heading` metadata for citation. Pure Python — no ChromaDB dependency, unit-testable offline. |
-| `src/embeddings.py` | Embedding functions for ChromaDB. Default **Gemini** (`gemini-embedding-2`, 3072-dim, uses the existing `GEMINI_API_KEY` in `.env` — same provider/key as the chat model). Optional local ONNX fallback (`RAG_EMBEDDING_PROVIDER=onnx`, all-MiniLM-L6-v2). Implements Chroma's `EmbeddingFunction` protocol (`__call__`, `name`, `get_config`, `build_from_config`) so it round-trips through the persistent collection config. |
-| `src/indexer.py` | The indexing pipeline. Embeds chunks and stores them in a local ChromaDB persistent collection (`knowledge/index/`, gitignored, rebuilt from corpus). CLI: `python src/indexer.py --force` to build, `--status` to inspect. |
-| `src/retriever.py` | Retrieval logic. Queries the index, returns top-k chunks, and formats them as a `RETRIEVED EVIDENCE` block with `(source; section)` citation markers. `retrieve_evidence()` degrades gracefully (returns `""`) when there is no index or the query fails/blank — the app falls back to Week 2 no-evidence behaviour instead of erroring. |
-
-### Files changed (existing)
-
-| File | Change |
-|---|---|
-| `src/main.py` | `ask()` now retrieves evidence for each message and attaches it to the prompt as a `RETRIEVED EVIDENCE` block before calling the model. |
-| `src/prompt_loader.py` | Default prompt version bumped to `v2.0`. |
-| `prompts/v2.0.md` | **New prompt spec** (see Section 3). |
-| `knowledge/corpus/` | New synthetic public corpus (4 docs: registration, retakes, course add/drop, exams) — non-binding reference data, marked for replacement with official sources in Week 8. |
-| `knowledge/metadata/sources.csv` | Provenance record for each corpus document (source, title, status, date, notes). |
-| `tests/test_retrieval.py` | New tests for the chunker, indexer and retriever (see Section 4). |
-| `tests/test_evaluation.py` | Mock harness now matches the student's message (strips the evidence prefix). |
-| `requirements.txt` | Added `chromadb==1.5.9`, `requests`. |
-| `.env.example` | Documented RAG vars: `RAG_EMBEDDING_PROVIDER`, `GEMINI_EMBEDDING_MODEL`, `RAG_TOP_K`, `RAG_CHUNK_SIZE`, `RAG_CHUNK_OVERLAP`; `PROMPT_VERSION` default updated to v2.0. |
-| `.gitignore` | Added `knowledge/index/` (vector index is a build artifact). |
-| `README.md` | Tech-stack row updated (ChromaDB + Gemini embeddings decided); Quick Start now includes the index-build step. |
+> **AI-use disclosure (per README §7):** code was drafted and executed with
+> opencode (Claude-style assistant) under my direction. I made the design
+> decisions below, reviewed and tested every change before it was committed,
+> and can explain each part. The final v2.0 prompt and the evidence/citation
+> rules are my own engineering decisions.
 
 ---
 
-## 2. Data flow
+## 1. My contribution this week
 
-```
-knowledge/corpus/*.md
-        │  src/chunker.py   (read + structural chunking, 800/80)
-        ▼
-   list[Chunk]              (source, title, heading, text)
-        │  src/indexer.py   (embeds via src/embeddings.py -> Gemini)
-        ▼
-   ChromaDB  knowledge/index/   (collection: student_support_knowledge, cosine)
-        ▲
-        │  src/retriever.py (embed query -> top_k -> format)
-        │
-        ▼
-   RETRIEVED EVIDENCE block
-        │  src/main.py      (prefixed to student message)
-        ▼
-   prompts/v2.0.md system prompt  →  model answer with citations + Sources:
-```
-
----
-
-## 3. Prompt Specification v2.0 (`prompts/v2.0.md`)
-
-Keeps v1.0's role, 5-way category classification, constraints C1–C8 and
-failure behaviour, and adds:
-
-- **RETRIEVED EVIDENCE is now attached** for knowledge questions; answers
-  must be grounded on it and not on general knowledge.
-- **New constraint C9** — every grounded claim carries the exact `(source;
-  section)` citation marker from its evidence chunk, inline after the
-  sentence. No invented or reformatted markers.
-- **`Sources:` output requirement** — the reply ends with a compact list of
-  every marker used (parseable for Week 7 guardrails).
-- Updated failure behaviour: procedure questions are answered from evidence
-  when present, and only fall back to "documents not available" when no
-  evidence was retrieved.
-- v1.0 → v2.0 changelog row and a Week 3 RAG test map (R1–R15).
-
----
-
-## 4. Testing & verification
-
-- `pytest tests/` → **19 passed** (health, Week 2 eval in mock mode, retrieval suite).
-- Retrieval tests are **hermetic**: they inject a deterministic stub embedding
-  function (lexical count-vector) so CI never needs the API. The real Gemini
-  path is verified separately via the CLI.
-- Live verification with the real Gemini embedder + chat model:
-
-```
-QUERY: Can I still register two weeks late?
-→ Category: knowledge_question
-  "…may still register for up to two weeks after the closing date
-   (01-registration.md; Late registration). …"
-  Sources: (01-registration.md; Late registration); (01-registration.md; Where to get help with registration)
-```
-
-- Retrieval quality spot-checks passed for registration, retakes, add/drop,
-  and exam-clash questions (correct document retrieved first for each).
-- Real index built today: **24 chunks** across the 4 synthetic corpus docs.
+1. **Chose the embedding approach.** Decided the RAG index uses **Gemini
+   embeddings** (`gemini-embedding-2`, 3072-dim) via the existing
+   `GEMINI_API_KEY` in `.env` — the same provider and key as the chat model
+   (Model Selection Note). Rejected a local ONNX model (would need a ~90 MB
+   download and split the stack from the chat provider). Kept the ONNX
+   option as an opt-in fallback (`RAG_EMBEDDING_PROVIDER=onnx`).
+2. **Designed and directed the RAG pipeline**, wiring it into the Week 2 app:
+   - Chunking: structural split on markdown headings and `[[page:N]]` page
+     markers from PDFs, then paragraph packing (default 800 chars, 80-char
+     overlap) with `source`/`section`/`kind` metadata.
+   - Indexing: `src/indexer.py` embeds chunks and persists them to local
+     ChromaDB (`knowledge/index/`), rebuildable, gitignored.
+   - Retrieval: `src/retriever.py` returns top-k chunks formatted as a
+     `RETRIEVED EVIDENCE` block with `(source; section)` markers; degrades
+     gracefully when the index is missing or the query is blank.
+   - Integration: `src/main.py` attaches evidence to `/chat` and the CLI;
+     default prompt version bumped to `v2.0`.
+3. **Authored Prompt Spec v2.0 (RAG revision)** — evidence grounding, the
+   C10 citation rule, the `Sources:` output line, updated failure behaviour,
+   and the Week 3 RAG test map (R1–R15).
+4. **Repointed the pipeline at the real fetched corpus.** Chunker now reads
+   `knowledge/text/*.txt` (extracted from the PDFs/HTML in `knowledge/raw` by
+   `src/fetch_corpus.py`). Titles and real/synthetic provenance are read from
+   `knowledge/corpus.json`. Removed the earlier synthetic placeholder corpus
+   (`knowledge/corpus/`, `knowledge/metadata/`). The `kind` field (real vs
+   synthetic) is carried through chunking, indexing and retrieval.
+5. **Wrote the retrieval test suite** — TF-IDF lexical stub embedder for
+   hermetic tests; deterministic round-trip on a tiny scratch corpus plus a
+   full-corpus sanity check; real-document assertions against the 11-doc
+   corpus. Fixed the Week 2 mock harness to evaluate the student's message
+   rather than the evidence prefix.
+6. **Verified end-to-end** — confirmed a grounded, cited model answer using
+   the real corpus; added exponential backoff on 429/5xx to
+   `src/embeddings.py` for free-tier quota resilience.
+7. **Repo/branch management** — created and pushed the `rag` branch; merged
+   the teammate v2.0 spec + corpus pipeline from `main` into `rag`, resolving
+   `prompts/v2.0.md` and `requirements.txt` conflicts deliberately.
 
 ---
 
-## 5. How to run it
+## 2. What my work sits on top of (teammates, credited)
+
+- Week 2 baseline app (`src/main.py`, `model_client.py`, `prompt_loader.py`,
+  `tests/`) and prompt v1.0 — prior team work.
+- v2.0 real-model-run spec + corpus extraction (`src/fetch_corpus.py`,
+  `knowledge/raw|text|synthetic`) — teammate commits merged from `main`.
+
+---
+
+## 3. Evidence / how to reproduce
 
 ```bash
-pip install -r requirements.txt        # includes chromadb + requests
-python src/indexer.py --force          # build the index (uses GEMINI_API_KEY)
-python src/indexer.py --status         # inspect the index
-python src/main.py "Can I still register two weeks late?"   # single-shot
-python src/main.py                     # interactive CLI
+python src/indexer.py --force              # build the index (Gemini embeddings)
+python src/indexer.py --status             # check the chunk count once built
+python src/main.py "What are the penalties for examination malpractice?"
 ```
 
-Env knobs (`.env.example`): `RAG_TOP_K` (default 3), `RAG_CHUNK_SIZE` (800),
-`RAG_CHUNK_OVERLAP` (80), `RAG_EMBEDDING_PROVIDER` (gemini), `GEMINI_EMBEDDING_MODEL`.
+Live run:
+```
+Category: knowledge_question
+
+A first offence of plagiarism carries a written warning and a grade "D" for
+the submitted work (D03.txt; Page 3). …
+Sources: (D03.txt; Page 3); (D03.txt; Page 4)
+```
+
+`pytest tests/` → 21 passed.
 
 ---
 
-## 6. Decisions & notes
+## 4. Next steps
 
-- **Embeddings = Gemini** (`gemini-embedding-2`), not a local model — same
-  provider/key as the chat model, no model download, per the Model Selection
-  Note. HuggingFace was unreachable from this sandbox, which also ruled out
-  Chroma's bundled ONNX MiniLM as the default (kept as an optional fallback).
-- **Synthetic corpus only**: `knowledge/` must not hold real/restricted
-  student data (README rule). All 4 corpus docs are marked synthetic and
-  non-binding, to be replaced with official Handbook sources during Week 8
-  hardening.
-- **ChromiDB constraints**: custom embedding functions must implement
-  `name`/`get_config`/`build_from_config` (ChromaDB 1.5.x enforces this);
-  opening a collection with a conflicting embedding function raises — the
-  indexer/retriever always reuse the index's own embedding function.
-- **Eval harness fix**: the Week 2 mock now evaluates the *student message*
-  after stripping the RAG evidence prefix.
-- Index location `knowledge/index/` is gitignored (rebuildable artifact).
-
----
-
-## 7. Next steps (not done today)
-
-- **15-case RAG evaluation runner** (R1–R15 from `prompts/v2.0.md` Section 3)
-  and the Week 3 evaluation table in `docs/evaluation/`.
-- Replace synthetic corpus with official/public Handbook sources.
-- Week 4: tools/function calling (case lookup + ticket creation) and the
-  `TOOL RESULTS` handling already reserved in the v2.0 prompt.
+- Week 3 RAG evaluation runner (R1–R15) + results table in `docs/evaluation/`.
+- Week 4: tools (case lookup, ticket creation) using the `TOOL RESULTS`
+  handling already reserved in the v2.0 prompt.

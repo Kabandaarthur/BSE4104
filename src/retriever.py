@@ -30,6 +30,7 @@ class RetrievedChunk:
     text: str
     source: str
     title: str
+    kind: str
     heading: str
     chunk_index: int
     distance: float
@@ -76,6 +77,7 @@ def retrieve(query, top_k=DEFAULT_TOP_K, index_dir=DEFAULT_INDEX_DIR, embedding_
                 text=str(text),
                 source=str(meta.get("source", "unknown")),
                 title=str(meta.get("title", "")),
+                kind=str(meta.get("kind", "unknown")),
                 heading=str(meta.get("heading", "")),
                 chunk_index=int(meta.get("chunk_index", -1)),
                 distance=float(distance),

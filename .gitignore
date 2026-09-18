@@ -8,7 +8,7 @@ __pycache__/
 venv/
 *.egg-info/
 
-# Week 3 RAG: the vector index is rebuilt from knowledge/corpus by src/indexer.py
+# Week 3 RAG: the vector index is rebuilt from knowledge/text by src/indexer.py
 knowledge/index/
 
 # OS/editor noise
