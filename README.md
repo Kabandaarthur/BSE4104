@@ -65,7 +65,7 @@ BSE4104/
 | API framework | **FastAPI** | Lightweight, fast to wire a chat endpoint to |
 | Frontend / chat interface | **TBD (Week 2)** — likely Streamlit for speed, or a simple HTML/JS page calling the FastAPI backend | Decide once the baseline model call works |
 | Foundation model | **TBD (Week 2)** — see `docs/evaluation/` for the Model Selection Note once written | Final choice documented with cost/latency/privacy rationale |
-| Vector store (RAG, Week 3+) | **ChromaDB** (proposed) | Free, local, simple to set up for a 10–50 document corpus |
+| Vector store (RAG, Week 3+) | **ChromaDB** (local, decided Week 3) with **Gemini embeddings** (`gemini-embedding-2`, same API key as the chat model); optional local ONNX fallback | Free, local, simple to set up for a 10–50 document corpus |
 
 ---
 
@@ -108,14 +108,22 @@ Per the module's professional integrity rules:
 
 ---
 
-## 8. Quick Start (fill in once `src/` has a working app — Week 2)
+## 8. Quick Start
 
 ```bash
 git clone https://github.com/Kabandaarthur/BSE4104.git
 cd BSE4104
 cp .env.example .env        # then fill in your own local API key — never commit .env
 pip install -r requirements.txt
-# run instructions to be added once the Week 2 baseline integration is committed
+
+# Week 3+ RAG: build the knowledge index (uses GEMINI_API_KEY for embeddings)
+python src/indexer.py --force   # rebuild after editing knowledge/corpus/*
+python src/indexer.py --status  # check what the index holds
+
+# Run the agent
+python src/main.py              # interactive CLI
+python src/main.py "your message here"   # single-shot (used by eval scripts)
+# or serve the FastAPI app:  uvicorn main:app --app-dir src
 ```
 
 ---

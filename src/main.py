@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 from model_client import chat, ModelClientError
 from prompt_loader import load_prompt_spec
+from retriever import retrieve_evidence
 
 
 app = FastAPI(title="University Student-Support Case Agent")
@@ -40,6 +41,9 @@ def call_model(system_prompt: str, user_message: str) -> str:
 
 
 def ask(user_message: str) -> str:
+    evidence = retrieve_evidence(user_message)
+    if evidence:
+        user_message = f"{evidence}\n\nStudent message:\n{user_message}"
     return call_model(load_prompt_spec(), user_message)
 
 

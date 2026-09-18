@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
-DEFAULT_VERSION = os.getenv("PROMPT_VERSION", "v1.0")
+DEFAULT_VERSION = os.getenv("PROMPT_VERSION", "v2.0")
 
 START_MARKER = "<!-- SYSTEM_PROMPT:START -->"
 END_MARKER = "<!-- SYSTEM_PROMPT:END -->"
