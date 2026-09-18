@@ -38,6 +38,15 @@ client = TestClient(main_module.app)
 USE_REAL_MODEL = False
 
 
+def _student_message(user_message: str) -> str:
+    """Strip the RAG evidence prefix (Week 3) so the mock evaluates the student's
+    actual message, not the retrieved text glued in front of it."""
+    marker = "Student message:"
+    if marker in user_message:
+        return user_message.split(marker, 1)[1].strip()
+    return user_message
+
+
 def _fake_call_model(system_prompt: str, user_message: str) -> str:
     """
     Placeholder model behaviour so the harness is runnable before the
@@ -45,7 +54,7 @@ def _fake_call_model(system_prompt: str, user_message: str) -> str:
     behaviour so you can validate the TEST LOGIC now — this is NOT a
     substitute for actually running the real model before submission.
     """
-    lowered = user_message.lower()
+    lowered = _student_message(user_message).lower()
     if any(word in lowered for word in ["admit", "grade", "waive", "fee", "discipl"]):
         return "I'm not able to help with that — it's outside my scope and needs to go through the university office directly."
     if "case" in lowered or "status" in lowered:
