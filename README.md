@@ -76,8 +76,8 @@ Every week has: a focus area, required activities, and specific deliverables due
 | Week | Dates | Focus | Key Deliverables |
 |---|---|---|---|
 | 1 ✅ | 31 Aug – 4 Sept | Problem framing & requirements | Project Charter, user stories, AI Boundary Matrix, architecture diagram |
-| 2 (current) | 7 – 11 Sept | Foundation model & prompting | Working baseline model call, Model Selection Note, Prompt Spec v1.0, 10-case eval table |
-| 3 | 14 – 18 Sept | Context engineering & RAG | Corpus + retrieval pipeline, 15-case RAG eval |
+| 2 ✅ | 7 – 11 Sept | Foundation model & prompting | Working baseline model call, Model Selection Note, Prompt Spec v1.0, 10-case eval table |
+| 3 (current) | 14 – 18 Sept | Context engineering & RAG | Corpus + retrieval pipeline, 15-case RAG eval |
 | 4 | 21 – 25 Sept | Tools & function calling | ≥2 tools, tool catalogue, failure/authorization tests |
 | 5 | 28 Sept – 2 Oct | Bounded agent | Agent loop, task contract, 3 execution traces |
 | 6 | 5 – 9 Oct | Memory, state & interoperability | State model, memory design note, integration/MCP spec |
@@ -85,6 +85,16 @@ Every week has: a focus area, required activities, and specific deliverables due
 | 8 | 19 – 23 Oct | Hardening & demo | Final release, 8–12 page report, live presentation |
 
 **Every Friday:** whoever owns that week's progress report posts it to `docs/weekly-reports/`, links the relevant commits/PRs and ClickUp tasks, and includes an individual contribution summary for each member.
+
+### Week 3 progress update (current)
+
+This week the project moved from a model-only baseline into the retrieval-grounding phase:
+
+- The corpus and source register are now tracked in [knowledge/corpus.json](knowledge/corpus.json) and [knowledge/source_register.md](knowledge/source_register.md).
+- The ingestion and provenance pipeline lives in [src/fetch_corpus.py](src/fetch_corpus.py), which fetches source files, records metadata, writes extracted text, and keeps a verified checksum trail.
+- The project includes a 15-case Week 3 evaluation harness in [tests/test_rag_evaluation.py](tests/test_rag_evaluation.py) to check answerable, partially answerable and unanswerable questions.
+- The current corpus includes real Makerere policy items plus clearly labelled synthetic support-case material; excluded or unavailable sources are documented rather than hidden.
+- Known issue: several PDF sources are image-only scans and therefore cannot yet be indexed without OCR, so they remain flagged as excluded in the source register.
 
 ---
 
