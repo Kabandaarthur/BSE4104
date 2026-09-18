@@ -14,3 +14,11 @@ knowledge/index/
 # OS/editor noise
 .DS_Store
 .vscode/
+
+# Scanned policy PDFs that yield no text (D01, D10, D12, D15) - 24MB of page
+# images that contribute nothing to retrieval. Provenance is preserved by the
+# sha256 in knowledge/corpus.json; re-fetch with src/fetch_corpus.py --force.
+knowledge/raw/D01.pdf
+knowledge/raw/D10.pdf
+knowledge/raw/D12.pdf
+knowledge/raw/D15.pdf

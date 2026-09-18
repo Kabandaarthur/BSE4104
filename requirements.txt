@@ -11,3 +11,10 @@ pydantic==2.12.5
 # Week 3 RAG
 chromadb==1.5.9
 requests>=2.31.0
+
+# Corpus extraction (Week 3)
+pypdf>=6.19.0
+beautifulsoup4>=4.15.0
+# OCR for the scanned policy PDFs (D01, D10, D12, D15). Needs the poppler
+# `pdftoppm` binary on PATH to render pages: apt install poppler-utils
+rapidocr-onnxruntime>=1.2.3

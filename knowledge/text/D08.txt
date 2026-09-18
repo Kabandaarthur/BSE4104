@@ -1,0 +1,104 @@
+> ⚠ **SYNTHETIC DOCUMENT — TEAM-AUTHORED, NOT REAL MAKERERE POLICY.**
+> This procedure was written by the BSE4104 project team for the University
+> Student-Support Case Agent. No public Makerere University equivalent exists.
+> It must never be cited to a student as official university policy.
+> Every section below repeats this label so that a single retrieved chunk,
+> read out of context, still carries the warning.
+
+# D08 — Department Query / Case Escalation Procedure (SYNTHETIC)
+
+Source: BSE4104 team, derived from the Week 1 Project Charter workflow (Section 2.5).
+Status: Synthetic reference material for agent testing only.
+
+## 1. Purpose and scope (SYNTHETIC)
+
+1.1 This procedure describes how a student query received by a department is
+recorded, triaged, escalated and closed. It exists so the Student-Support Case
+Agent has a documented workflow to ground case-handling answers in.
+
+1.2 It covers queries about registration, examinations, timetabling and course
+or handbook procedure. It does not cover admissions, grading, disciplinary or
+fee decisions, which are reserved to university officers.
+
+## 2. Intake (SYNTHETIC)
+
+2.1 A query may reach the department in person at the department office, by
+email to the department administrator, or through the student support agent as
+a draft ticket.
+
+2.2 Every query is assigned a case ID in the form `CASE-NNNN` at intake. The
+case ID is the only reference a student should quote when following up.
+
+2.3 At intake the department administrator records: the case ID, the student's
+registration number, the programme and year of study, the issue type, the date
+received, and a one-line summary in the student's own words.
+
+2.4 A draft ticket prepared by the Student-Support Case Agent is not a case.
+It becomes a case only once a department administrator accepts it at intake and
+issues a case ID.
+
+## 3. Triage and issue types (SYNTHETIC)
+
+3.1 Each case is classified as exactly one issue type: Examinations,
+Registration, Timetable, Course/Handbook, or Other.
+
+3.2 Triage target is two working days from intake. Triage assigns the case an
+owner and a priority.
+
+3.3 Priority is Routine, Urgent, or Blocking. A case is Blocking when the
+student cannot sit an examination or cannot complete registration before a
+published deadline.
+
+## 4. Case states (SYNTHETIC)
+
+4.1 A case is in exactly one of these states at any time:
+
+- `Received` — recorded at intake, not yet triaged.
+- `In triage` — being classified and assigned.
+- `With department` — an owner in the department is acting on it.
+- `Escalated` — passed to a college or central office under Section 5.
+- `Awaiting student` — blocked pending information from the student.
+- `Resolved` — an outcome has been communicated to the student.
+- `Closed` — resolved and no response from the student for ten working days.
+
+4.2 Only a department administrator or the assigned case owner may change a
+case state. The Student-Support Case Agent may report a case state when a case
+record is supplied to it, but may never change one.
+
+## 5. Escalation routes (SYNTHETIC)
+
+5.1 A case is escalated when it cannot be resolved within the department, or
+when the target response time in Section 6 has passed.
+
+5.2 Escalation routes:
+
+- Examination conduct, malpractice or irregularity — College Registrar.
+- Registration, credit load or add/drop past deadline — Academic Registrar's Department.
+- Accommodation, welfare or student conduct — Office of the Dean of Students.
+- Tuition, functional fees, payment or refund — University Bursar's office.
+- Marks, results or remarking requests — course lecturer, then College Registrar.
+
+5.3 Escalation does not transfer the case ID. The original case ID follows the
+case through every office.
+
+## 6. Response targets (SYNTHETIC)
+
+6.1 Acknowledgement of intake: one working day.
+
+6.2 Triage: two working days from intake.
+
+6.3 First substantive response to the student: five working days from intake,
+or two working days where priority is Blocking.
+
+6.4 These are internal service targets, not guarantees to the student, and
+they are suspended while a case is `Awaiting student`.
+
+## 7. What the agent may and may not do (SYNTHETIC)
+
+7.1 The Student-Support Case Agent may: explain this procedure, explain what a
+case state means, prepare a draft ticket, and tell a student which office a
+case would be escalated to.
+
+7.2 The Student-Support Case Agent may not: create a case, issue a case ID,
+change a case state, promise a response time as a commitment, or state the
+status of a specific case unless a case record has been supplied to it.
