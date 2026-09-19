@@ -12,7 +12,7 @@ environment change rather than a rebuild (Section 2.5 of the note).
 import os
 
 from dotenv import load_dotenv
-from openai import OpenAI
+from openai import APIError, OpenAI, RateLimitError
 
 load_dotenv()
 
@@ -69,10 +69,20 @@ def get_client(provider=None):
 def chat(messages, provider=None, temperature=0.4, max_tokens=None):
     name, config = _provider_config(provider)
     client = get_client(name)
-    response = client.chat.completions.create(
-        model=config["model"],
-        messages=messages,
-        temperature=temperature,
-        max_tokens=max_tokens,
-    )
+    try:
+        response = client.chat.completions.create(
+            model=config["model"],
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+    except RateLimitError as error:
+        raise ModelClientError(
+            f"The {name} model quota is currently exhausted. "
+            "Wait for the quota reset or switch to another configured provider."
+        ) from error
+    except APIError as error:
+        raise ModelClientError(
+            f"The {name} model request failed: {error}"
+        ) from error
     return response.choices[0].message.content
