@@ -1,14 +1,3 @@
-"""Thin, switchable model client for the University Student-Support Case Agent.
-
-Week 2 deliverable: a single isolated interface between the app and the
-selected foundation model (Model Selection Note, Section 2.4). The primary
-model is Gemini 3.6 Flash (the Gemini 2.5 Flash successor; the 2026-09 API
-no longer serves 2.5 Flash to new keys); GPT-4o mini is the paid backup and
-Llama 3.1 8B (Ollama) is available for local runs. All three are reached
-through one OpenAI-compatible client, so switching providers is a one-line
-environment change rather than a rebuild (Section 2.5 of the note).
-"""
-
 import os
 
 from dotenv import load_dotenv

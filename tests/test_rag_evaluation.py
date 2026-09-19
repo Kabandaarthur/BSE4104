@@ -47,7 +47,8 @@ def _has_uncertainty_marker(text: str) -> bool:
 
 # Each case: id, category, input question, which Doc IDs (from the Corpus/
 # Source Register) a correct grounded answer should cite, and whether an
-# uncertainty marker is required in the reply.
+# uncertainty marker is required in the reply. The complete evaluation record
+# is maintained in docs/evaluation/WEEK-3-RAG-TEST-QUESTIONS.md.
 #
 # expected_sources is deliberately a list of ACCEPTABLE Doc IDs, not a single
 # exact one — retrieval may reasonably pull from more than one relevant
@@ -56,19 +57,19 @@ def _has_uncertainty_marker(text: str) -> bool:
 CASES = [
     {
         "id": "R1", "category": "Answerable",
-        "input": "What are the penalties for examination malpractice?",
+        "input": "What penalties can apply when a student cheats in an examination?",
         "expected_sources": ["D03"],
         "require_uncertainty": False,
     },
     {
         "id": "R2", "category": "Answerable",
-        "input": "What is the procedure for remarking students' work?",
+        "input": "How long after publication of final results may a student appeal for remarking, and to whom is the appeal addressed?",
         "expected_sources": ["D13"],
         "require_uncertainty": False,
     },
     {
         "id": "R3", "category": "Answerable",
-        "input": "What are the academic calendar dates for the second semester?",
+        "input": "According to the 2026/2027 university calendar, when does Semester Two run?",
         "expected_sources": ["D05", "D06"],
         "require_uncertainty": False,
     },
@@ -80,43 +81,43 @@ CASES = [
     },
     {
         "id": "R5", "category": "Answerable",
-        "input": "How do I apply for field attachment?",
+        "input": "What are the six steps used to organize field attachment?",
         "expected_sources": ["D14"],
         "require_uncertainty": False,
     },
     {
         "id": "R6", "category": "Partially answerable",
-        "input": "What undergraduate programmes are offered by CoCIS?",
+        "input": "What undergraduate programme information does the CoCIS page provide, and what entry requirements apply to the programme I want?",
         "expected_sources": ["D07"],
         "require_uncertainty": False,
     },
     {
         "id": "R7", "category": "Partially answerable",
-        "input": "How do I appeal a decision on a malpractice case?",
+        "input": "What does the examination-malpractice policy say about appealing a disciplinary decision and how long do I have?",
         "expected_sources": ["D03"],
         "require_uncertainty": False,
     },
     {
         "id": "R8", "category": "Partially answerable",
-        "input": "How is a student query escalated to the department?",
+        "input": "How is a student query triaged and escalated, and what will happen to my specific case after I submit it?",
         "expected_sources": ["D08"],
         "require_uncertainty": False,
     },
     {
         "id": "R9", "category": "Partially answerable",
-        "input": "What is the current status of case #4521?",
+        "input": "What is the current status of the synthetic case CASE-4521, and when will I receive its next response?",
         "expected_sources": [],
         "require_uncertainty": True,
     },
     {
         "id": "R10", "category": "Partially answerable",
-        "input": "My exam clashes with another paper and nobody told me the room.",
-        "expected_sources": [],
+        "input": "What does the corpus say about deferred examinations, and can you approve my request for one?",
+        "expected_sources": ["D04"],
         "require_uncertainty": False,
     },
     {
         "id": "R11", "category": "Unanswerable",
-        "input": "What are the sandwich-degree fees?",
+        "input": "What are the sandwich-degree fees for the 2026/2027 academic year?",
         "expected_sources": [],
         "require_uncertainty": True,
     },
