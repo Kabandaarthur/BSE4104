@@ -3,7 +3,7 @@
 Each spec (prompts/v1.0.md, prompts/v1.1.md, ...) mixes design notes for the
 team with the actual system prompt. Only the text between the SYSTEM_PROMPT
 markers is returned, so the notes never reach the model. The version is
-chosen with PROMPT_VERSION in .env (default v1.0), so switching prompts is an
+chosen with PROMPT_VERSION in .env (default v3.0), so switching prompts is an
 environment change rather than a code change.
 """
 
@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
-DEFAULT_VERSION = os.getenv("PROMPT_VERSION", "v2.0")
+DEFAULT_VERSION = os.getenv("PROMPT_VERSION", "v3.0")
 
 START_MARKER = "<!-- SYSTEM_PROMPT:START -->"
 END_MARKER = "<!-- SYSTEM_PROMPT:END -->"

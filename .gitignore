@@ -11,6 +11,10 @@ venv/
 # Week 3 RAG: the vector index is rebuilt from knowledge/text by src/indexer.py
 knowledge/index/
 
+# Week 4 tools: local mock case/ticket store (only created when
+# TOOLS_STORE_FILE is set, see .env.example)
+knowledge/tool_store.json
+
 # OS/editor noise
 .DS_Store
 .vscode/

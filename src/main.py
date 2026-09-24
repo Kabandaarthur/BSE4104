@@ -1,7 +1,11 @@
 """
 app.py
 ------
-Week 2 baseline: the smallest useful model-backed capability.
+Week 4: the tool-calling Student-Support Case Agent.
+
+One student message is driven through src/orchestrator.py's tool-calling
+loop (model → parse tool calls → execute → feed results back) up to
+MAX_TOOL_ROUNDS times, then the final answer is returned.
 
 Run:
     python src/app.py                     # interactive CLI
@@ -14,7 +18,8 @@ import sys
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from model_client import chat, ModelClientError
+from model_client import ModelClientError
+from orchestrator import run_turn
 from prompt_loader import load_prompt_spec
 from retriever import retrieve_evidence
 
@@ -31,13 +36,8 @@ class ChatResponse(BaseModel):
 
 
 def call_model(system_prompt: str, user_message: str) -> str:
-    """Send one user message through the isolated model client."""
-    return chat(
-        [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message},
-        ]
-    )
+    """Send one student message through the Week 4 tool-calling agent loop."""
+    return run_turn(user_message, system_prompt=system_prompt).reply
 
 
 def ask(user_message: str) -> str:
@@ -70,7 +70,7 @@ def main():
             print(f"[ERROR] {e}")
         return
 
-    print("Makerere Student-Support Case Agent - Week 2 baseline")
+    print("Makerere Student-Support Case Agent - Week 4 (tool calling)")
     print("Type a message and press Enter. Ctrl+C to quit.\n")
     while True:
         try:
