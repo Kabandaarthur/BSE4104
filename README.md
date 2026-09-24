@@ -7,9 +7,12 @@
 
 ---
 
-## 1. What This Project Is
+## 1. Project Purpose
 
-We are building a bounded AI agent that helps a Makerere student:
+This project builds a bounded AI agent for Makerere student support. Its purpose
+is to provide grounded procedural guidance from approved university sources,
+while keeping sensitive decisions and actions outside the system's authority.
+The agent helps a Makerere student:
 
 1. Get **grounded answers** to handbook/course procedure questions (registration deadlines, retakes, course-add/drop windows, etc.) — with a citation back to the source document.
 2. **Check the status** of an existing support case using a case ID.
@@ -19,45 +22,10 @@ We are building a bounded AI agent that helps a Makerere student:
 
 This is not "a chatbot." It is a bounded, multi-step, tool-using system built progressively over 8 weeks — model → RAG → tools → agent loop → memory → evaluation → hardening. Every week adds one capability on top of a tested foundation from the week before.
 
----
-
-## 2. Team & Roles
-
-| Role | Owner | Responsible for |
-|---|---|---|
-| Project/Requirements Lead | **Kabanda Arthur** | Project Charter, user stories, coordination with course convener, weekly report sign-off, keeping this README and the ClickUp board current |
-| Application/Integration Lead | **Tumukunde Kato Andrew** | App skeleton, model/API integration, environment config (`.env.example`), repo hygiene |
-| AI Engineering Lead | **Ariko Sossy Joel** | Model selection, prompt engineering, RAG pipeline, agent loop design |
-| DevOps/Documentation Lead | **Garanga John** | ClickUp board, prompt/version tracking, documentation folders, weekly progress reports |
-
-Roles may flex week-to-week depending on workload, but **every member must own identifiable tasks each week** and be able to explain any part of the system at review — this is a course requirement, not optional.
 
 ---
 
-## 3. Repository Structure — What Goes Where
-
-```
-BSE4104/
-├── docs/
-│   ├── architecture/      → System/context diagrams, updated each week as the design grows
-│   ├── evaluation/        → Evaluation tables, test scenario sets, results (per week + final 30-case set in Week 7)
-│   ├── requirements/      → Project Charter, user stories, AI Boundary Matrix
-│   └── weekly-reports/    → One report per week (1-2 pages each) — see Section 5
-├── evidence/               → Screenshots, execution traces, demo evidence, anything that proves a claim in a report
-├── knowledge/              → Corpus metadata / provenance for the RAG knowledge base (Week 3+)
-│                              ⚠ Do NOT commit restricted or real student data here — synthetic/public only
-├── prompts/                → Every prompt specification, versioned (v1.0, v1.1, ...) with clear commit messages
-├── src/                     → Actual application source code
-├── tests/                   → Automated/scripted tests
-├── .env.example             → Template for required environment variables — NEVER commit real API keys/secrets
-└── README.md                → This file
-```
-
-**Rule of thumb:** if you're not sure where something goes, ask in the group chat before dumping it in the repo root. A messy repo counts against the "Software Engineering Quality" section of the final report.
-
----
-
-## 4. Tech Stack
+## 2. Tech Stack
 
 | Layer | Choice | Why |
 |---|---|---|
@@ -69,16 +37,16 @@ BSE4104/
 
 ---
 
-## 5. Weekly Rhythm — What "Done" Looks Like Each Week
+## 3. Weekly Rhythm — What "Done" Looks Like Each Week
 
 Every week has: a focus area, required activities, and specific deliverables due Friday. Full 8-week breakdown lives in the assignment brief; here's the short version so nobody has to go digging:
 
 | Week | Dates | Focus | Key Deliverables |
 |---|---|---|---|
 | 1 ✅ | 31 Aug – 4 Sept | Problem framing & requirements | Project Charter, user stories, AI Boundary Matrix, architecture diagram |
-| 2 (current) | 7 – 11 Sept | Foundation model & prompting | Working baseline model call, Model Selection Note, Prompt Spec v1.0, 10-case eval table |
-| 3 | 14 – 18 Sept | Context engineering & RAG | Corpus + retrieval pipeline, 15-case RAG eval |
-| 4 | 21 – 25 Sept | Tools & function calling | ≥2 tools, tool catalogue, failure/authorization tests |
+| 2 ✅ | 7 – 11 Sept | Foundation model & prompting | Working baseline model call, Model Selection Note, Prompt Spec v1.0, 10-case eval table |
+| 3 ✅ | 14 – 18 Sept | Context engineering & RAG | Corpus + retrieval pipeline, 15-case RAG eval |
+| 4 🔄 | 21 – 25 Sept | Tools & function calling | ≥2 tools, tool catalogue, failure/authorization tests |
 | 5 | 28 Sept – 2 Oct | Bounded agent | Agent loop, task contract, 3 execution traces |
 | 6 | 5 – 9 Oct | Memory, state & interoperability | State model, memory design note, integration/MCP spec |
 | 7 | 12 – 16 Oct | Evaluation & guardrails | 30-case eval set, traces, guardrails, failure catalogue |
@@ -88,52 +56,93 @@ Every week has: a focus area, required activities, and specific deliverables due
 
 ---
 
-## 6. How We Work — Git & ClickUp
+## 4. How We Work — Git & ClickUp
 
 - **ClickUp is the source of truth for tasks.** If it's not in ClickUp with an owner and a due date, it doesn't count as planned work.
-- **Branch per feature/task**, not directly on `main`. Suggested naming: `week2-model-integration`, `week3-rag-pipeline`, etc.
+- **Branch per feature/task**, not directly on `main`. Suggested naming: `week2-model-integration`, `week3-rag-pipeline`, `week4-tool-calling`, etc.
 - **Commit messages should say what and why**, especially for `prompts/` — since prompt version history is graded evidence, not just a nice-to-have.
 - **Open a PR before merging into `main`**, even solo — it creates a reviewable trail and keeps `main` stable for demos.
 - **Never commit secrets.** Real API keys go in a local `.env` (gitignored); only placeholder variable names go in `.env.example`.
 
 ---
 
-## 7. AI Use — Keep This Honest
+## 5. First-Time Setup
 
-Per the module's professional integrity rules:
-- Declare which AI tools/models were used for design, coding, testing, documentation and evaluation.
-- Keep a short **AI Engineering Log** for material AI-assisted decisions (a simple running note in `docs/` is fine).
-- Review, test, and understand any AI-generated code before merging — **you must be able to explain anything you submit.**
-- Never send real/confidential student data to an external AI service. Synthetic or public data only.
+The first-time setup creates an isolated Python environment, installs the
+application and RAG dependencies, and configures the model provider. The
+commands below are for Windows PowerShell. Python 3.12 or newer is recommended.
 
----
-
-## 8. Quick Start
-
-```bash
+```powershell
 git clone https://github.com/Kabandaarthur/BSE4104.git
-cd BSE4104
-cp .env.example .env        # then fill in your own local API key — never commit .env
-pip install -r requirements.txt
+Set-Location BSE4104
 
-# Week 3+ RAG: build the knowledge index (uses GEMINI_API_KEY for embeddings).
-# Corpus is knowledge/text/* (extracted from the PDFs/HTML in knowledge/raw by
-# src/fetch_corpus.py). Re-fetch/re-extract first when the corpus changes.
-python src/indexer.py --force   # rebuild after editing knowledge/text/*
-python src/indexer.py --status  # check what the index holds
+# Create and activate an isolated environment.
+py -3 -m venv .venv
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
+.\.venv\Scripts\Activate.ps1
 
-# Run the agent
-python src/main.py              # interactive CLI
-python src/main.py "your message here"   # single-shot (used by eval scripts)
-# or serve the FastAPI app:  uvicorn main:app --app-dir src
+# Install application, RAG, corpus-extraction and test dependencies.
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+
+# Create local configuration. Never commit .env or real API keys.
+Copy-Item .env.example .env
+notepad .env
+```
+
+The optional ONNX embedding fallback is local after its model download:
+`RAG_EMBEDDING_PROVIDER=onnx`. Gemini embeddings and chat calls require a valid
+`GEMINI_API_KEY`; never place a real key in `.env.example` or source control.
+
+## 6. Corpus and RAG Index
+
+The checked-in extracted corpus is under `knowledge/text/`, with raw public
+downloads under `knowledge/raw/` and provenance in `knowledge/corpus.json`.
+To refresh the corpus or rebuild the source register:
+
+```powershell
+python src/fetch_corpus.py
+python src/fetch_corpus.py --verify
+python src/fetch_corpus.py --register
+```
+
+Build and inspect the local ChromaDB index:
+
+```powershell
+python src/indexer.py --force
+python src/indexer.py --status
+```
+
+The persistent index is stored under `knowledge/index/`. Rebuild it after the
+corpus or embedding provider changes.
+
+## 7. Running the Application
+
+```powershell
+# Interactive CLI
+python src/main.py
+
+# Single question
+python src/main.py "What are the penalties for examination malpractice?"
+
+# FastAPI server
+uvicorn main:app --app-dir src --reload
+```
+
+The API exposes `GET /health` and `POST /chat`. Example request body:
+
+```json
+{"message":"What are the penalties for examination malpractice?"}
 ```
 
 ---
 
-## 9. Where to Get Unstuck
+## 8. Week 4: Tools & Function Calling Documentation
 
-- **Not sure what to work on?** Check ClickUp first, then `docs/weekly-reports/` for the latest plan.
-- **Not sure where a file goes?** See Section 3 above, or ask before committing.
-- **Blocked on someone else's task?** Say so in the group chat immediately — don't sit idle until the weekly check-in.
+For Week 4, the agent is equipped with two deterministic, safe software capabilities:
+1. `get_case_status`: Look up the status of an existing case by its ID (e.g., `CAS-2026-001`).
+2. `create_support_ticket`: Draft and store a structured support ticket when procedural guidance cannot resolve an inquiry.
 
----
+* **Tool Catalogue & Schemas**: [`docs/architecture/WEEK-4-TOOL-CATALOGUE.md`](docs/architecture/WEEK-4-TOOL-CATALOGUE.md)
+* **Human-in-the-Loop Policy**: [`docs/requirements/WEEK-4-HUMAN-APPROVAL-POLICY.md`](docs/requirements/WEEK-4-HUMAN-APPROVAL-POLICY.md)
+* **Week 4 Progress Report**: [`docs/weekly-reports/WEEK-4-PROGRESS-REPORT.md`](docs/weekly-reports/WEEK-4-PROGRESS-REPORT.md)

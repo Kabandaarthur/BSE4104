@@ -58,7 +58,14 @@ def _open_collection(index_dir, reset=False, embedding_function=None):
     }
     if embedding_function is not None:
         kwargs["embedding_function"] = embedding_function
-    return client.get_or_create_collection(**kwargs)
+    try:
+        return client.get_or_create_collection(**kwargs)
+    except ValueError as error:
+        # Chroma persists the embedding function with each collection. Reuse
+        # that function for an existing index built with another provider.
+        if reset or "embedding function" not in str(error).lower():
+            raise
+        return client.get_collection(COLLECTION_NAME)
 
 
 def build_index(
