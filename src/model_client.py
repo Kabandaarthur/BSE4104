@@ -10,13 +10,24 @@ environment change rather than a rebuild (Section 2.5 of the note).
 """
 
 import os
+import re
+import time
 
 from dotenv import load_dotenv
-from openai import OpenAI
+from openai import APIConnectionError, APIStatusError, APITimeoutError, OpenAI
 
 load_dotenv()
 
 DEFAULT_PROVIDER = os.getenv("LLM_PROVIDER", "gemini")
+
+# Transient model-side failures worth retrying: Gemini free-tier chat is
+# ~5 requests/minute and the tool-calling loop can make several calls per
+# turn, so 429/503 spikes are expected and usually clear in seconds.
+RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+CHAT_RETRY_ATTEMPTS = int(os.getenv("LLM_CHAT_RETRIES", "8"))
+CHAT_RETRY_BACKOFF = 1  # seconds; doubles each attempt (capped at 30)
+CHAT_RETRY_MAX_WAIT = 30
+_RETRY_AFTER_RE = re.compile(r"Please retry in ([\d.]+)s")
 
 PROVIDERS = {
     "gemini": {
@@ -164,8 +175,34 @@ def chat_completion(messages, provider=None, temperature=0.4, max_tokens=None, t
     if tools:
         request["tools"] = tools
         request["tool_choice"] = tool_choice
-    response = client.chat.completions.create(**request)
-    return response.choices[0].message
+
+    delay = CHAT_RETRY_BACKOFF
+    for attempt in range(1, CHAT_RETRY_ATTEMPTS + 1):
+        try:
+            response = client.chat.completions.create(**request)
+            return response.choices[0].message
+        except (APIStatusError, APIConnectionError, APITimeoutError) as error:
+            status = getattr(error, "status_code", None)
+            transient = isinstance(error, (APIConnectionError, APITimeoutError)) or status in RETRYABLE_STATUS
+            if transient and attempt < CHAT_RETRY_ATTEMPTS:
+                suggested = None
+                body = getattr(getattr(error, "response", None), "text", "") or ""
+                match = _RETRY_AFTER_RE.search(body)
+                if match:
+                    suggested = float(match.group(1))
+                wait = min(suggested + 1 if suggested is not None else delay, CHAT_RETRY_MAX_WAIT)
+                print(
+                    f"[model] {type(error).__name__} (status={status}) on attempt "
+                    f"{attempt}/{CHAT_RETRY_ATTEMPTS}; retrying in {wait:.0f}s",
+                    flush=True,
+                )
+                time.sleep(wait)
+                delay = min(delay * 2, CHAT_RETRY_MAX_WAIT)
+                continue
+            raise ModelClientError(
+                f"Model request failed after {attempt} attempt(s) "
+                f"(status={status}): {error}"
+            ) from error
 
 
 def chat(messages, provider=None, temperature=0.4, max_tokens=None):
