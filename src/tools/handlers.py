@@ -23,6 +23,7 @@ import re
 from datetime import datetime, timezone
 
 from tools import mock_store
+from tools.mock_store import StoreError
 
 CASE_ID_RE = re.compile(r"^(CAS-\d{4}-\d{3}|TCK-\d{4}-\d{4})$")
 STUDENT_ID_RE = re.compile(r"^\d{10}$")
@@ -81,7 +82,15 @@ def get_case_status(case_id, session_student_id=None):
             "(e.g. CAS-2026-001, TCK-2026-0001).",
             400,
         )
-    record = mock_store.get_case(normalized) or mock_store.get_ticket(normalized)
+    try:
+        record = mock_store.get_case(normalized) or mock_store.get_ticket(normalized)
+    except StoreError as error:
+        raise ToolError(
+            "DATABASE_TIMEOUT",
+            "The case lookup service is temporarily unreachable. "
+            "Please try again shortly.",
+            503,
+        ) from error
     if record is None:
         raise ToolError(
             "CASE_NOT_FOUND",
@@ -147,7 +156,15 @@ def create_support_ticket(student_id, category, summary, details, urgency):
             403,
         )
 
-    existing = mock_store.find_unresolved_ticket(student_id, summary)
+    try:
+        existing = mock_store.find_unresolved_ticket(student_id, summary)
+    except StoreError as error:
+        raise ToolError(
+            "DATABASE_TIMEOUT",
+            "The ticketing service is temporarily unreachable; the ticket "
+            "was not created. Please try again shortly.",
+            503,
+        ) from error
     if existing:
         raise ToolError(
             "DUPLICATE_TICKET",
@@ -162,22 +179,30 @@ def create_support_ticket(student_id, category, summary, details, urgency):
     queue = "FACULTY_REGISTRAR_TRIAGE" if requires_human_approval else "GENERAL_SUPPORT_QUEUE"
     created_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
-    saved = mock_store.add_ticket(
-        {
-            "student_id": student_id,
-            "category": category,
-            "summary": str(summary).strip(),
-            "details": str(details).strip(),
-            "urgency": urgency,
-            "status": status,
-            "created_at": created_at,
-            "last_updated": created_at,
-            "routing_queue": queue,
-            "requires_human_approval": requires_human_approval,
-            "assigned_officer": f"Unassigned ({queue})",
-            "acknowledgment_message": HITL_ACK if requires_human_approval else ROUTED_ACK,
-        }
-    )
+    try:
+        saved = mock_store.add_ticket(
+            {
+                "student_id": student_id,
+                "category": category,
+                "summary": str(summary).strip(),
+                "details": str(details).strip(),
+                "urgency": urgency,
+                "status": status,
+                "created_at": created_at,
+                "last_updated": created_at,
+                "routing_queue": queue,
+                "requires_human_approval": requires_human_approval,
+                "assigned_officer": f"Unassigned ({queue})",
+                "acknowledgment_message": HITL_ACK if requires_human_approval else ROUTED_ACK,
+            }
+        )
+    except StoreError as error:
+        raise ToolError(
+            "DATABASE_TIMEOUT",
+            "The ticketing service is temporarily unreachable; the ticket "
+            "was not created. Please try again shortly.",
+            503,
+        ) from error
     return {
         "ticket_id": saved["ticket_id"],
         "status": saved["status"],
