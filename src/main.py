@@ -1,19 +1,11 @@
 """
 app.py
 ------
-Week 3: retrieval-grounded model calls.
+Week 4: the tool-calling Student-Support Case Agent.
 
-Owner (this integration): Tumukunde Kato Andrew (Application/Integration Lead).
-
-Ariko's src/retriever.py returns the retrieved chunks and a pre-formatted
-RETRIEVED EVIDENCE block for the prompt (prompts/v2.0.md, C10, expects the
-model to self-cite in its reply text as "Sources: (doc; section)"). That
-covers the model-facing half. This file adds the code-facing half required
-by User Story US-7 (Week 1 charter): the /chat response and CLI report,
-independently of the model's own text, exactly which source document(s)
-retrieval actually used for that turn — logged to stdout and returned in
-ChatResponse.sources — so grounding can be checked/audited even if the
-model's citation line is missing or malformed.
+One student message is driven through src/orchestrator.py's tool-calling
+loop (model → parse tool calls → execute → feed results back) up to
+MAX_TOOL_ROUNDS times, then the final answer is returned.
 
 Run:
     python src/app.py                     # interactive CLI
@@ -27,7 +19,8 @@ import sys
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from model_client import chat, ModelClientError
+from model_client import ModelClientError
+from orchestrator import run_turn
 from prompt_loader import load_prompt_spec
 from retriever import retrieve, format_evidence, RetrievalError
 
@@ -47,13 +40,8 @@ class ChatResponse(BaseModel):
 
 
 def call_model(system_prompt: str, user_message: str) -> str:
-    """Send one user message through the isolated model client."""
-    return chat(
-        [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message},
-        ]
-    )
+    """Send one student message through the Week 4 tool-calling agent loop."""
+    return run_turn(user_message, system_prompt=system_prompt).reply
 
 
 def _source_ids(chunks) -> list[str]:
@@ -118,7 +106,7 @@ def main():
             print(f"[ERROR] {e}")
         return
 
-    print("Makerere Student-Support Case Agent - Week 3 (RAG-grounded)")
+    print("Makerere Student-Support Case Agent - Week 4 (tool calling)")
     print("Type a message and press Enter. Ctrl+C to quit.\n")
     while True:
         try:

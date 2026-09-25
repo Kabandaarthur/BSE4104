@@ -14,6 +14,7 @@ download ~90 MB from HuggingFace once on first use.
 """
 
 import os
+import re
 import time
 from typing import Dict, List
 
@@ -30,6 +31,11 @@ GEMINI_REST_BASE = os.getenv("GEMINI_REST_BASE", "https://generativelanguage.goo
 BATCH_LIMIT = int(os.getenv("RAG_EMBED_BATCH", "16"))
 RETRY_ATTEMPTS = int(os.getenv("RAG_EMBED_RETRIES", "6"))
 RETRY_BACKOFF = 5  # seconds; doubles after each attempt (capped at 60)
+# Seconds to wait between batch requests. The free Gemini tier limits
+# batchEmbedContents to ~5 requests/minute, and unfired batches trip HTTP 429
+# and burn retry attempts; pacing keeps a run under the quota. Set to 0 for a
+# paid key or local fallback.
+EMBED_PACE_SECONDS = float(os.getenv("RAG_EMBED_PACE", "13"))
 
 
 class EmbeddingError(RuntimeError):
@@ -40,8 +46,23 @@ def _retryable(status_code):
     return status_code in {429, 500, 502, 503, 504}
 
 
+_RETRY_AFTER_RE = re.compile(r"Please retry in ([\d.]+)s")
+
+
+def _suggested_wait(response):
+    """Use the server's suggested wait when provided (the API omits the
+    Retry-After header but embeds 'Please retry in Xs' in the 429 body)."""
+    retry_after = response.headers.get("Retry-After")
+    if retry_after and retry_after.isdigit():
+        return int(retry_after)
+    match = _RETRY_AFTER_RE.search(response.text)
+    if match:
+        return float(match.group(1))
+    return None
+
+
 def _post_with_retry(url, **kwargs):
-    """POST with exponential backoff on transient errors (quota/5xx)."""
+    """POST with backoff on transient errors (quota/5xx)."""
     delay = RETRY_BACKOFF
     for attempt in range(1, RETRY_ATTEMPTS + 1):
         response = requests.post(url, **kwargs)
@@ -49,12 +70,11 @@ def _post_with_retry(url, **kwargs):
             return response
         if not _retryable(response.status_code):
             break
-        retry_after = response.headers.get("Retry-After")
-        wait = delay
-        if retry_after and retry_after.isdigit():
-            wait = max(delay, min(int(retry_after), 60))
+        suggested = _suggested_wait(response)
+        wait = suggested + 1.0 if suggested is not None else delay
+        wait = min(wait, 60)
         print(f"[embeddings] {response.status_code} on attempt {attempt}/{RETRY_ATTEMPTS}; "
-              f"retrying in {wait}s", flush=True)
+              f"retrying in {wait:.0f}s", flush=True)
         time.sleep(wait)
         delay = min(delay * 2, 60)
     raise EmbeddingError(
@@ -80,6 +100,10 @@ class GeminiEmbeddingFunction(EmbeddingFunction):
 
         embeddings = []
         for start in range(0, len(input), BATCH_LIMIT):
+            if EMBED_PACE_SECONDS > 0:
+                # Sleep even before the first batch so a fresh process lets
+                # the free-tier quota window refill before firing.
+                time.sleep(EMBED_PACE_SECONDS)
             batch = input[start : start + BATCH_LIMIT]
             response = _post_with_retry(
                 f"{self.base_url}/models/{self.model}:batchEmbedContents",
