@@ -1,0 +1,55 @@
+{
+  "_comment": "Pre-seeded records for get_case_status/create_support_ticket testing (Week 4). Read-only seed — src/tools/mock_db.py copies this into the mutable runtime store on first use / reset. One record per (category x status) combination that the catalogue's output schema defines, so every enum value in docs/architecture/University_Student_Support_Case_Agent_Week4_Tool_Catalogue.pdf has at least one real example to retrieve.",
+  "cases": {
+    "CAS-2026-001": {
+      "case_id": "CAS-2026-001",
+      "student_id": "2300718082",
+      "category": "REGISTRATION",
+      "status": "OPEN",
+      "assigned_officer": "Ms. Namuli (Academic Registrar's Office)",
+      "last_updated": "2026-09-15T09:12:00Z",
+      "summary": "Student unable to register for CSC3105 due to a prerequisite hold.",
+      "official_notes": "Awaiting confirmation of prerequisite waiver from the department."
+    },
+    "CAS-2026-002": {
+      "case_id": "CAS-2026-002",
+      "student_id": "2300706399",
+      "category": "EXAMINATION",
+      "status": "PENDING_STAFF_APPROVAL",
+      "assigned_officer": "Mr. Okello (Faculty Registrar Triage)",
+      "last_updated": "2026-09-18T14:40:00Z",
+      "summary": "Reported timetable clash between BSE4104 and BSE4108 end-of-semester exams.",
+      "official_notes": "Escalated per Tier 2 HITL policy; awaiting Department Support Coordinator sign-off."
+    },
+    "CAS-2026-003": {
+      "case_id": "CAS-2026-003",
+      "student_id": "2300722975",
+      "category": "TIMETABLE",
+      "status": "IN_PROGRESS",
+      "assigned_officer": "Ms. Kirabo (Timetabling Office)",
+      "last_updated": "2026-09-20T11:05:00Z",
+      "summary": "Requested room change for a clashing lab session.",
+      "official_notes": "Alternative lab slot identified; confirming with course coordinator."
+    },
+    "CAS-2026-004": {
+      "case_id": "CAS-2026-004",
+      "student_id": "2300708510",
+      "category": "GENERAL_QUERY",
+      "status": "RESOLVED",
+      "assigned_officer": "Front Desk — Dean of Students",
+      "last_updated": "2026-09-10T08:00:00Z",
+      "summary": "Asked how to obtain a proof-of-registration letter.",
+      "official_notes": "Directed to the Academic Registrar's online portal; case closed by student confirmation."
+    },
+    "CAS-2026-005": {
+      "case_id": "CAS-2026-005",
+      "student_id": "2300718082",
+      "category": "REGISTRATION",
+      "status": "CLOSED",
+      "assigned_officer": "Ms. Namuli (Academic Registrar's Office)",
+      "last_updated": "2026-08-30T16:20:00Z",
+      "summary": "Late registration request for Semester One 2026/2027.",
+      "official_notes": "Approved and processed; no further action."
+    }
+  }
+}
