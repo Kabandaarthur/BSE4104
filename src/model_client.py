@@ -34,7 +34,7 @@ PROVIDERS = {
     },
     "ollama": {
         "base_url": os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1"),
-        "model": os.getenv("OLLAMA_MODEL", "llama3.1:8b"),
+        "model": os.getenv("OLLAMA_MODEL", "llama3.2"),
         "api_key_env": None,
     },
 }

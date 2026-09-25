@@ -14,7 +14,10 @@ Run:
 """
 
 import logging
+import os
 import sys
+import textwrap
+from datetime import datetime
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -94,6 +97,132 @@ def chat_endpoint(request: ChatRequest) -> ChatResponse:
         raise HTTPException(status_code=502, detail=str(error)) from error
 
 
+# --------------------------------------------------------------------------
+# CLI display
+#
+# Everything below is presentation-only: it decides how the conversation
+# looks in the terminal. None of it touches ask() / call_model() / the
+# FastAPI endpoints above, and none of it changes what is sent to or
+# received from the agent.
+# --------------------------------------------------------------------------
+
+# ANSI styling. If a terminal doesn't support color, these are just ignored
+# escape codes and everything still reads fine.
+_SUPPORTS_COLOR = sys.stdout.isatty()
+
+
+def _c(code: str, text: str) -> str:
+    if not _SUPPORTS_COLOR:
+        return text
+    return f"\033[{code}m{text}\033[0m"
+
+
+_RESET = "0"
+_DIM = "2"
+_BOLD = "1"
+_CYAN = "36"
+_GREEN = "32"
+_YELLOW = "33"
+_RED = "31"
+_GRAY = "90"
+
+_TERM_WIDTH = 78
+
+
+def _timestamp() -> str:
+    return datetime.now().strftime("%H:%M:%S")
+
+
+def _rule(char: str = "─", width: int = _TERM_WIDTH) -> str:
+    return _c(_GRAY, char * width)
+
+
+def _wrap(text: str, width: int) -> list[str]:
+    lines = []
+    for raw_line in text.strip("\n").splitlines() or [""]:
+        wrapped = textwrap.wrap(
+            raw_line, width=width, break_long_words=False, break_on_hyphens=False
+        ) or [""]
+        lines.extend(wrapped)
+    return lines
+
+
+def _print_banner():
+    title = "Makerere University Student-Support Case Agent"
+    subtitle = "Week 4 · Tool-calling assistant (RAG + tools)"
+    print()
+    print(_c(_BOLD + ";" + _CYAN, "  " + title))
+    print(_c(_GRAY, "  " + subtitle))
+    print(_rule("═"))
+    print(
+        _c(_GRAY, "  Ask a question, check a case status, or raise a support ticket.")
+    )
+    print(_c(_GRAY, "  Type 'quit', 'exit', or press Ctrl+C to leave."))
+    print(_rule("═"))
+    print()
+
+
+def _print_student_message(message: str):
+    label = _c(_BOLD + ";" + _CYAN, "You") + _c(_GRAY, f"  {_timestamp()}")
+    print(label)
+    for line in _wrap(message, _TERM_WIDTH - 2):
+        print(_c(_CYAN, "  " + line))
+    print()
+
+
+def _split_paragraphs(text: str) -> list[str]:
+    """Turn the raw reply into a list of paragraphs for display.
+
+    The model already puts one idea per line (a category line, one
+    sentence per penalty/finding, a closing 'Sources:' line, etc.) --
+    the old version just dropped every blank line and printed all of
+    them back-to-back with zero spacing, which is what made replies look
+    like one crushed block. Here every non-empty line becomes its own
+    paragraph, so each one gets its own line(s) with a blank line between."""
+    return [line.strip() for line in text.strip().splitlines() if line.strip()] or [
+        text.strip()
+    ]
+
+
+def _print_agent_reply(response: str, sources: list[str]):
+    label = _c(_BOLD + ";" + _GREEN, "Case Agent") + _c(_GRAY, f"  {_timestamp()}")
+    print(label)
+    print()
+
+    paragraphs = _split_paragraphs(response) if response.strip() else []
+    if not paragraphs:
+        paragraphs = ["No response returned."]
+
+    for i, paragraph in enumerate(paragraphs):
+        for line in _wrap(paragraph, _TERM_WIDTH - 2):
+            print("  " + line)
+        if i != len(paragraphs) - 1:
+            print()
+
+    print()
+    if sources:
+        tag_line = " ".join(_c(_YELLOW, f"[{s}]") for s in sources)
+        print(_c(_GRAY, "  sources: ") + tag_line)
+    else:
+        print(_c(_GRAY, "  sources: none"))
+
+    print()
+    print(_rule())
+    print()
+
+
+def _print_error(message: str):
+    print(_c(_BOLD + ";" + _RED, "Case Agent") + _c(_GRAY, f"  {_timestamp()}"))
+    print(_c(_RED, f"  ⚠ {message}"))
+    print()
+    print(_rule())
+    print()
+
+
+def _clear_screen():
+    os.system("cls" if os.name == "nt" else "clear")
+
+
 def main():
     if len(sys.argv) > 1:
         # single-shot mode, e.g. for scripted evaluation runs
@@ -106,24 +235,32 @@ def main():
             print(f"[ERROR] {e}")
         return
 
-    print("Makerere Student-Support Case Agent - Week 4 (tool calling)")
-    print("Type a message and press Enter. Ctrl+C to quit.\n")
+    _clear_screen()
+    _print_banner()
     while True:
         try:
-            user_message = input("Student: ").strip()
+            user_message = input(_c(_BOLD, "> ")).strip()
         except (KeyboardInterrupt, EOFError):
-            print("\nBye.")
+            print("\n" + _c(_GRAY, "Goodbye. Have a great day!") + "\n")
             break
+
         if not user_message:
-            print("Agent: Please type a question or request.")
             continue
+
+        if user_message.lower() in {"quit", "exit", "bye"}:
+            print("\n" + _c(_GRAY, "Goodbye. Have a great day!") + "\n")
+            break
+
+        print()
+        _print_student_message(user_message)
+
         try:
             response, sources = ask(user_message)
         except ModelClientError as e:
-            print(f"[ERROR] {e}")
+            _print_error(str(e))
             continue
-        print(f"Agent: {response}")
-        print(f"[sources retrieved: {', '.join(sources) if sources else 'none'}]\n")
+
+        _print_agent_reply(response, sources)
 
 
 if __name__ == "__main__":
