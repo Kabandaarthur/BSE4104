@@ -1,0 +1,25 @@
+{
+  "trace_id": "T01",
+  "title": "Status lookup of a seeded case",
+  "captured_at": "2026-09-26T16:29:25+00:00",
+  "condition": "normal",
+  "tool": "get_case_status",
+  "arguments": {
+    "case_id": "CAS-2026-001"
+  },
+  "result": {
+    "case_id": "CAS-2026-001",
+    "student_id": "2300708510",
+    "category": "REGISTRATION",
+    "status": "IN_PROGRESS",
+    "assigned_officer": "Mary Acero (Registrar's Office)",
+    "last_updated": "2026-09-15T09:30:00+00:00",
+    "summary": "Late registration request for Semester 1, awaiting college endorsement.",
+    "official_notes": "Student submitted the late-registration form; college endorsement pending."
+  },
+  "latency_ms": 0.01,
+  "store_side_effect": {
+    "tickets_before": 1,
+    "tickets_after": 1
+  }
+}

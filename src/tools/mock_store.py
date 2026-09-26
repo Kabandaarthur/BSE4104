@@ -132,8 +132,11 @@ def _persist(store):
     if not STORE_PATH:
         return
     path = Path(STORE_PATH)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(store, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(store, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    except OSError as error:
+        raise StoreError(f"Cannot write tool store at {STORE_PATH}: {error}") from error
 
 
 def get_store():
@@ -186,14 +189,22 @@ def find_unresolved_ticket(student_id, summary):
 
 
 def add_ticket(payload):
-    """Insert a ticket, assign the next TCK-YYYY-XXXX id and persist it."""
+    """Insert a ticket, assign the next TCK-YYYY-XXXX id and persist it.
+
+    The in-memory store is only updated after the write succeeds, so a failed
+    persist raises StoreError and leaves no half-created ticket behind.
+    """
     store = get_store()
     number = store["next_ticket_number"]
     year = datetime.now(timezone.utc).year
     ticket_id = f"TCK-{year}-{number:04d}"
     ticket = dict(payload)
     ticket["ticket_id"] = ticket_id
-    store["tickets"][ticket_id] = ticket
-    store["next_ticket_number"] = number + 1
-    _persist(store)
+    updated = {
+        **store,
+        "tickets": {**store["tickets"], ticket_id: ticket},
+        "next_ticket_number": number + 1,
+    }
+    _persist(updated)
+    store.update(updated)
     return ticket

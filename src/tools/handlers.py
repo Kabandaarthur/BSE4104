@@ -20,6 +20,7 @@ FACULTY_REGISTRAR_TRIAGE per the catalogue's escalation rule.
 """
 
 import re
+import unicodedata
 from datetime import datetime, timezone
 
 from tools import mock_store
@@ -37,19 +38,55 @@ HITL_ACK = (
 )
 ROUTED_ACK = "Your ticket has been logged and routed to the general support queue."
 
-DISALLOWED_PATTERNS = (
-    # grade / mark alteration
-    "change my grade", "change my grades", "alter my grade", "alter my grades",
-    "grade alteration", "alteration of grade", "alteration of grades",
-    "change my mark", "change my marks", "alter my mark", "alter my marks",
-    # fee waiver / cancellation / refund
-    "waive my fee", "waive my fees", "waive my tuition", "cancel my fee",
-    "cancel my fees", "cancel my tuition", "refund my fee", "refund my fees",
-    "fee cancellation", "forgive my fee",
-    # disciplinary reversal
-    "dismiss me", "overturn my dismissal", "drop the disciplinary case",
-    "clear my disciplinary record", "disciplinary dismissal",
+# DISALLOWED_TOPIC detection (AI Boundary Matrix: grading, fee, admissions and
+# disciplinary decisions stay human). A fixed phrase list was bypassed by
+# simple rewording ("raise my marks", "admit me", "clear my fees balance"), so
+# these rules match a demand verb near a protected subject instead. Past-tense
+# verbs are deliberately left out of the verb-first rule so factual complaints
+# ("I cleared my fees but the portal still shows a balance") remain ticketable.
+_PROTECTED = (
+    r"(?:grades?|marks?|results?|scores?|c?gpa|transcripts?|"
+    r"fees?|tuition|balance|arrears|"
+    r"admissions?|programme|program|"
+    r"suspension|dismissal|expulsion|disciplinary|misconduct)"
 )
+_DEMAND_VERB = (
+    r"(?:change|changing|alter|altering|raise|raising|increase|increasing|"
+    r"upgrade|upgrading|update|updating|modify|modifying|amend|amending|"
+    r"adjust|adjusting|edit|editing|boost|boosting|bump|remove|removing|"
+    r"delete|deleting|erase|erasing|clear|clearing|wipe|wiping|waive|waiving|"
+    r"cancel|cancelling|canceling|exempt|exempting|forgive|forgiving|"
+    r"refund|refunding|write\s+off|writing\s+off|lift|lifting|overturn|"
+    r"overturning|reverse|reversing|revoke|revoking|drop|dropping|"
+    r"reinstate|reinstating|approve|approving|grant|granting|set|setting)"
+)
+_PARTICIPLE = (
+    r"(?:changed|altered|raised|increased|upgraded|modified|amended|adjusted|"
+    r"boosted|removed|deleted|erased|wiped|waived|cancell?ed|forgiven|"
+    r"refunded|written\s+off|lifted|overturned|reversed|revoked|dropped|"
+    r"reinstated|approved|granted)"
+)
+DISALLOWED_RULES = tuple(
+    re.compile(pattern)
+    for pattern in (
+        # "raise my marks", "waive my tuition balance", "approve my admission"
+        rf"\b{_DEMAND_VERB}\b(?:\W+\w+){{0,4}}?\W+{_PROTECTED}\b",
+        # "I want my grade changed", "get my suspension lifted"
+        rf"\b{_PROTECTED}\b(?:\W+\w+){{0,2}}?\W+{_PARTICIPLE}\b",
+        # "grade change request", "fee waiver", "tuition write-off"
+        r"\b(?:grades?|marks?|results?|scores?|c?gpa)\s+(?:change|alteration|"
+        r"revision|upgrade|increase|modification|amendment|adjustment)",
+        r"\b(?:fees?|tuition)\s+(?:waiver|exemption|cancell?ation|write[\s-]?off|"
+        r"refund|forgiveness|reduction)",
+        # "admit me", "pass me", "reinstate me", "exempt me"
+        r"\b(?:admit|readmit|pass|reinstate|exempt|dismiss|expel)\s+me\b",
+        # "mark me as passed", "mark my tuition as paid"
+        r"\bmark\w*\s+(?:\w+\s+){0,3}?as\s+(?:passed|paid|cleared|settled|admitted)\b",
+        # "give me an A", "award me a distinction"
+        r"\b(?:give|award)\s+me\s+(?:an?\s+)?(?:[abcd][+-]?|pass|distinction|first[\s-]class)(?:\W|$)",
+    )
+)
+_INVISIBLE_CHARS = dict.fromkeys(map(ord, "​‌‍⁠﻿­"))
 
 
 class ToolError(Exception):
@@ -229,8 +266,11 @@ def _validate_ticket(student_id, category, summary, details, urgency):
 
 
 def _is_disallowed(summary, details):
-    haystack = f"{summary} {details}".casefold()
-    return any(pattern in haystack for pattern in DISALLOWED_PATTERNS)
+    # NFKC folds full-width/stylised letters; stripping zero-width characters
+    # stops "gr​ade" from slipping past the word-boundary rules.
+    text = unicodedata.normalize("NFKC", f"{summary} {details}")
+    haystack = " ".join(text.translate(_INVISIBLE_CHARS).casefold().split())
+    return any(rule.search(haystack) for rule in DISALLOWED_RULES)
 
 
 TOOL_HANDLERS = {

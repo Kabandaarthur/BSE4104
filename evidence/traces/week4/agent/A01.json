@@ -1,0 +1,48 @@
+{
+  "trace_id": "A01",
+  "title": "Case status lookup",
+  "captured_at": "2026-09-26T16:29:34+00:00",
+  "prompt_version": "v3.0",
+  "student_message": "What's the status of my case CAS-2026-001?",
+  "tool_calls": [
+    "get_case_status"
+  ],
+  "rounds": 1,
+  "history": [
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "call_833860",
+          "type": "function",
+          "function": {
+            "name": "get_case_status",
+            "arguments": "{\"case_id\":\"CAS-2026-001\"}"
+          },
+          "extra_content": {
+            "google": {
+              "thought_signature": "EqIDCp8DAWkUfRN7Qu1GfYL4jNhdJ8a9ohRqhlOzx9vkKei4JJoVJU3/nnP1EwEZNujiFdvbvz0kAhB33NzUv5nOpcNA+HuYu3t0VNKHYLUFCcGPg1zJRdkjTCSoziUhIGtYLK5rENQdDL2kyIwe+YW7FCIz8brfBpkQdxyZ/GBcrKFRb4C0ezVuKOPwRZ1/pCgjd+nAf+LEmLOetguAzLNnr+RY4YvfvFYqmEt9ZcZiNvbqymGfGsZNXQwB1daTnI7osZfvRSMemUull1Zyj0ULOwIMZrFvcSxW8T4hrmmDpHR0t6Cz0fBP8Ew1PSjeSaI16gxxRvfepBHbkrvuFdtU9tu5yE70XcjDmoFyEgVp7FSX44VrUtt2Ctp5tLgY3tQ0R6Egudx6V9UzQ/VyM7TQw+dDyFUApHC5gFS/9t9hEg/tCNLoMmPAIVILLZcjbmi9RqzoJdrEbSMpPVQAPKO4LmzxCJlW2On4g+QuQv3kXGzbexcEFssDV32R5WsSE8dHAHz0K9jUw0OsGa7m4CQYSaykgdOZbETGwOLg2mG4SAaBJA=="
+            }
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_833860",
+      "content": "{\"case_id\": \"CAS-2026-001\", \"student_id\": \"2300708510\", \"category\": \"REGISTRATION\", \"status\": \"IN_PROGRESS\", \"assigned_officer\": \"Mary Acero (Registrar's Office)\", \"last_updated\": \"2026-09-15T09:30:00+00:00\", \"summary\": \"Late registration request for Semester 1, awaiting college endorsement.\", \"official_notes\": \"Student submitted the late-registration form; college endorsement pending.\"}"
+    },
+    {
+      "role": "assistant",
+      "content": "Category: case_status\n\nYour case CAS-2026-001 is currently **IN_PROGRESS**. \n\nHere are the details from the system:\n- **Category:** Registration\n- **Assigned Officer:** Mary Acero (Registrar's Office)\n- **Last Updated:** September 15, 2026\n- **Summary:** Late registration request for Semester 1, awaiting college endorsement.\n- **Notes:** Student submitted the late-registration form; college endorsement pending."
+    }
+  ],
+  "reply": "Category: case_status\n\nYour case CAS-2026-001 is currently **IN_PROGRESS**. \n\nHere are the details from the system:\n- **Category:** Registration\n- **Assigned Officer:** Mary Acero (Registrar's Office)\n- **Last Updated:** September 15, 2026\n- **Summary:** Late registration request for Semester 1, awaiting college endorsement.\n- **Notes:** Student submitted the late-registration form; college endorsement pending.",
+  "error": null,
+  "latency_s": 7.36,
+  "store_side_effect": {
+    "tickets_before": 1,
+    "tickets_after": 1
+  }
+}

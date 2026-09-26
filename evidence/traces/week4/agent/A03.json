@@ -1,0 +1,48 @@
+{
+  "trace_id": "A03",
+  "title": "Examination ticket needing staff approval",
+  "captured_at": "2026-09-26T16:29:52+00:00",
+  "prompt_version": "v3.0",
+  "student_message": "My student number is 2300708510. My CS301 and STAT201 exams are both timetabled for Friday 9am. Please raise a ticket.",
+  "tool_calls": [
+    "create_support_ticket"
+  ],
+  "rounds": 1,
+  "history": [
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "call_577558",
+          "type": "function",
+          "function": {
+            "name": "create_support_ticket",
+            "arguments": "{\"summary\":\"CS301 and STAT201 exams are both timetabled for Friday at 9am.\",\"student_id\":\"2300708510\",\"category\":\"TIMETABLE\",\"urgency\":\"HIGH\",\"details\":\"CS301 and STAT201 exams are both timetabled for Friday at 9am.\"}"
+          },
+          "extra_content": {
+            "google": {
+              "thought_signature": "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"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_577558",
+      "content": "{\"ticket_id\": \"TCK-2026-0002\", \"status\": \"PENDING_STAFF_APPROVAL\", \"created_at\": \"2026-09-26T16:29:46+00:00\", \"routing_queue\": \"FACULTY_REGISTRAR_TRIAGE\", \"requires_human_approval\": true, \"acknowledgment_message\": \"Your ticket has been logged and flagged for priority review by department staff before action is taken.\"}"
+    },
+    {
+      "role": "assistant",
+      "content": "Category: new_ticket\n\nYour support ticket has been created under ID TCK-2026-0002. Its status is PENDING_STAFF_APPROVAL, and it has been routed to the FACULTY_REGISTRAR_TRIAGE queue. Your ticket has been logged and flagged for priority review by department staff before action is taken."
+    }
+  ],
+  "reply": "Category: new_ticket\n\nYour support ticket has been created under ID TCK-2026-0002. Its status is PENDING_STAFF_APPROVAL, and it has been routed to the FACULTY_REGISTRAR_TRIAGE queue. Your ticket has been logged and flagged for priority review by department staff before action is taken.",
+  "error": null,
+  "latency_s": 11.31,
+  "store_side_effect": {
+    "tickets_before": 1,
+    "tickets_after": 2
+  }
+}
