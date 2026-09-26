@@ -1,0 +1,28 @@
+{
+  "trace_id": "T10",
+  "title": "Attempt to set status directly",
+  "captured_at": "2026-09-26T16:29:25+00:00",
+  "condition": "normal",
+  "tool": "create_support_ticket",
+  "arguments": {
+    "student_id": "2300708510",
+    "category": "EXAMINATION",
+    "summary": "Exam room not assigned for STAT201",
+    "details": "No room is listed for my STAT201 paper next week.",
+    "urgency": "LOW",
+    "status": "RESOLVED",
+    "requires_human_approval": false
+  },
+  "result": {
+    "error": {
+      "code": "VALIDATION_FAILED",
+      "description": "Invalid arguments for 'create_support_ticket': create_support_ticket() got an unexpected keyword argument 'status'",
+      "http_status": 422
+    }
+  },
+  "latency_ms": 0.01,
+  "store_side_effect": {
+    "tickets_before": 3,
+    "tickets_after": 3
+  }
+}

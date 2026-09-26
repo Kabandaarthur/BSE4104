@@ -1,0 +1,26 @@
+{
+  "trace_id": "T09",
+  "title": "Admissions decision request is refused",
+  "captured_at": "2026-09-26T16:29:25+00:00",
+  "condition": "normal",
+  "tool": "create_support_ticket",
+  "arguments": {
+    "student_id": "2300708510",
+    "category": "GENERAL_QUERY",
+    "summary": "Admit me to the BSc programme",
+    "details": "Please admit me to Computer Science this intake.",
+    "urgency": "LOW"
+  },
+  "result": {
+    "error": {
+      "code": "DISALLOWED_TOPIC",
+      "description": "This request asks staff to alter a grade, fee or disciplinary outcome. That cannot be raised as a support ticket and must go through the official university channel.",
+      "http_status": 403
+    }
+  },
+  "latency_ms": 0.05,
+  "store_side_effect": {
+    "tickets_before": 3,
+    "tickets_after": 3
+  }
+}
