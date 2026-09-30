@@ -30,6 +30,14 @@ class StoreError(RuntimeError):
     pass
 
 
+# Test/demo hook for the DATABASE_TIMEOUT failure mode required by the tool
+# catalogue (Sections 2.5, 3.6) and the Week 4 test suite ("simulated
+# database/store downtime -- the tool call should fail explicitly, not
+# hang or fabricate a result"). Flip to True to make every store access
+# raise StoreError, then False to restore normal operation.
+SIMULATE_DOWNTIME = False
+
+
 SEED_CASES = {
     "CAS-2026-001": {
         "case_id": "CAS-2026-001",
@@ -129,6 +137,8 @@ def _persist(store):
 
 
 def get_store():
+    if SIMULATE_DOWNTIME:
+        raise StoreError("Simulated store downtime (SIMULATE_DOWNTIME=True).")
     global _state
     if _state is None:
         _state = _load_file() or _seed()
