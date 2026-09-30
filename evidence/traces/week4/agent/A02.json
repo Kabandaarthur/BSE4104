@@ -1,0 +1,48 @@
+{
+  "trace_id": "A02",
+  "title": "Unknown case ID",
+  "captured_at": "2026-09-26T16:29:40+00:00",
+  "prompt_version": "v3.0",
+  "student_message": "Can you check case CAS-2026-999 for me?",
+  "tool_calls": [
+    "get_case_status"
+  ],
+  "rounds": 1,
+  "history": [
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "call_658167",
+          "type": "function",
+          "function": {
+            "name": "get_case_status",
+            "arguments": "{\"case_id\":\"CAS-2026-999\"}"
+          },
+          "extra_content": {
+            "google": {
+              "thought_signature": "EokECoYEAWkUfRN1F/+QGyV1y4vBifkZAeI8ZL4zE0HR6t3c8ioGs/lJcnRQ1QeBJQh90dFePBVNVeQQR48rz/RkjU2TWt2P7uhXtx+9FWd8di/r1ZXhnEJivq+QV8C6c+BN4ps9/qcYfvkjlDe9ICpJ5KboO0XXV+UG90x05PT8mPpCeL3bUL4NGdKQU4toOHFRz/rvZhAi8FlwFmuhulVkUCpSmKgxdv1x2QcuIWJTR2c6s/3qfTkFY775+mNeqQZSWD8+lRWR1HwO5fW1pvwIU9C9KayU3rx9Y56lca1zjErZbiOHtYu7VvTvQmaxnKtQRTCxyhThYUMiFL47UIFj+T4F//8Ymo0F1A4cOm+6/PMklD8GPcjuCeYRHLoIUCchWXBGlQRjwUdY9i2soIO6tcEswgNTd7HaY/eqGdIAK5wXIBTk+vThwyyWIDfuHJFz9iBKXB/iSLfi3CPATCMPoultRXoAB/hew1MzH5CRE8EOGXT6H3TPZZY/gnP6rJ3zyCU29AXxmMYURmgDc9hqvPIkL0HJWCTLilHyJa7f2IeaiUX1EdsrJLrYcYcPV7zX1hAdM1lSAGq/hQL0uBZkpgkcNlGN7eEMYsuWgEwjQHM/0iAPOK4SdPSyDQ53NyZ/uGD/fZH1UGXp8DTRLvzhcAHNsg1m7nzmJvX+DnY9uyOtJF5uT155GgU="
+            }
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_658167",
+      "content": "{\"error\": {\"code\": \"CASE_NOT_FOUND\", \"description\": \"No case with that ID exists in the registry.\", \"http_status\": 404}}"
+    },
+    {
+      "role": "assistant",
+      "content": "Category: case_status\n\nNo case with the ID CAS-2026-999 was found in the system. Please double-check your case ID and try again, or let me know if you would like me to help you raise a new support ticket."
+    }
+  ],
+  "reply": "Category: case_status\n\nNo case with the ID CAS-2026-999 was found in the system. Please double-check your case ID and try again, or let me know if you would like me to help you raise a new support ticket.",
+  "error": null,
+  "latency_s": 6.49,
+  "store_side_effect": {
+    "tickets_before": 1,
+    "tickets_after": 1
+  }
+}

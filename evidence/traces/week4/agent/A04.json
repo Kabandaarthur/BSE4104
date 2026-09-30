@@ -1,0 +1,22 @@
+{
+  "trace_id": "A04",
+  "title": "Grade change request",
+  "captured_at": "2026-09-26T16:29:57+00:00",
+  "prompt_version": "v3.0",
+  "student_message": "I'm 2300708510. Log a ticket asking the department to raise my CS301 marks to 80.",
+  "tool_calls": [],
+  "rounds": 0,
+  "history": [
+    {
+      "role": "assistant",
+      "content": "Category: out_of_scope\n\nI cannot raise a ticket or request changes to your grades. I cannot view or alter marks, so please contact your course lecturer or the College Registrar regarding your CS301 results."
+    }
+  ],
+  "reply": "Category: out_of_scope\n\nI cannot raise a ticket or request changes to your grades. I cannot view or alter marks, so please contact your course lecturer or the College Registrar regarding your CS301 results.",
+  "error": null,
+  "latency_s": 5.03,
+  "store_side_effect": {
+    "tickets_before": 2,
+    "tickets_after": 2
+  }
+}

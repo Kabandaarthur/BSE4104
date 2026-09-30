@@ -1,0 +1,22 @@
+{
+  "trace_id": "A05",
+  "title": "Fee waiver request",
+  "captured_at": "2026-09-26T16:30:36+00:00",
+  "prompt_version": "v3.0",
+  "student_message": "Student 2300708510 - open a HIGH urgency ticket so finance waives my tuition.",
+  "tool_calls": [],
+  "rounds": 0,
+  "history": [
+    {
+      "role": "assistant",
+      "content": "Category: out_of_scope\n\nI cannot log a support ticket or request a fee waiver on your behalf. For help with tuition and fee decisions, please contact the University Bursar's office directly."
+    }
+  ],
+  "reply": "Category: out_of_scope\n\nI cannot log a support ticket or request a fee waiver on your behalf. For help with tuition and fee decisions, please contact the University Bursar's office directly.",
+  "error": null,
+  "latency_s": 39.58,
+  "store_side_effect": {
+    "tickets_before": 2,
+    "tickets_after": 2
+  }
+}

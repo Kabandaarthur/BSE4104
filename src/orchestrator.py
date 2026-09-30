@@ -59,7 +59,12 @@ def build_messages(system_prompt, history, user_message):
 
 
 def _tool_call_dict(tool_call):
-    """Normalise either an SDK tool_call object or a raw dict to a JSON-safe dict."""
+    """Normalise either an SDK tool_call object or a raw dict to a JSON-safe dict.
+
+    Provider-specific extra_content is kept: Gemini 3 attaches a
+    thought_signature there and rejects the next request (HTTP 400) if the
+    tool call is sent back without it.
+    """
     if isinstance(tool_call, dict):
         data = tool_call
     else:
@@ -71,16 +76,20 @@ def _tool_call_dict(tool_call):
                 "name": getattr(function, "name", "") or "",
                 "arguments": getattr(function, "arguments", "") or "",
             },
+            "extra_content": getattr(tool_call, "extra_content", None),
         }
     function = data.get("function") or {}
     arguments = function.get("arguments")
     if not isinstance(arguments, str):
         arguments = json.dumps(arguments) if arguments is not None else ""
-    return {
+    normalised = {
         "id": data.get("id") or "",
         "type": data.get("type") or "function",
         "function": {"name": function.get("name") or "", "arguments": arguments},
     }
+    if isinstance(data.get("extra_content"), dict):
+        normalised["extra_content"] = data["extra_content"]
+    return normalised
 
 
 def parse_tool_arguments(raw):
