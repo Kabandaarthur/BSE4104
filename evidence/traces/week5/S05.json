@@ -1,0 +1,172 @@
+{
+  "trace_id": "S05",
+  "title": "Tool failure — handbook search fails, re-plan once, then stop",
+  "captured_at": "2026-10-02T08:55:35+00:00",
+  "prompt_version": "v4.0",
+  "student_message": "How do I appeal an examination result?",
+  "stop_reason": "tool_error",
+  "stop_summary": "A tool failed and could not be recovered from within 2 attempts (the allowed single re-plan was used); the loop stopped instead of guessing a result.",
+  "stop_detail": {
+    "stop_reason": "tool_error",
+    "summary": "A tool failed and could not be recovered from within 2 attempts (the allowed single re-plan was used); the loop stopped instead of guessing a result.",
+    "message_source": "loop_fallback"
+  },
+  "iterations": 2,
+  "tool_calls": [
+    "retrieve_evidence",
+    "retrieve_evidence"
+  ],
+  "executions": [
+    {
+      "name": "retrieve_evidence",
+      "arguments": {
+        "query": "appeal examination result"
+      },
+      "status": "error",
+      "result": {
+        "error": {
+          "code": "RETRIEVAL_FAILED",
+          "description": "Evidence retrieval failed: ChromaDB index unreachable",
+          "http_status": 503
+        }
+      }
+    },
+    {
+      "name": "retrieve_evidence",
+      "arguments": {
+        "query": "examination appeal procedure"
+      },
+      "status": "error",
+      "result": {
+        "error": {
+          "code": "RETRIEVAL_FAILED",
+          "description": "Evidence retrieval failed: ChromaDB index unreachable",
+          "http_status": 503
+        }
+      }
+    }
+  ],
+  "sources": [],
+  "trace": [
+    {
+      "iteration": 1,
+      "stage": "sense",
+      "detail": "2 messages in context so far"
+    },
+    {
+      "iteration": 1,
+      "stage": "plan",
+      "detail": [
+        "retrieve_evidence({'query': 'appeal examination result'})"
+      ]
+    },
+    {
+      "iteration": 1,
+      "stage": "observe",
+      "detail": {
+        "tool": "retrieve_evidence",
+        "status": "error",
+        "result": {
+          "error": {
+            "code": "RETRIEVAL_FAILED",
+            "description": "Evidence retrieval failed: ChromaDB index unreachable",
+            "http_status": 503
+          }
+        }
+      }
+    },
+    {
+      "iteration": 2,
+      "stage": "sense",
+      "detail": "4 messages in context so far"
+    },
+    {
+      "iteration": 2,
+      "stage": "plan",
+      "detail": [
+        "retrieve_evidence({'query': 'examination appeal procedure'})"
+      ]
+    },
+    {
+      "iteration": 2,
+      "stage": "observe",
+      "detail": {
+        "tool": "retrieve_evidence",
+        "status": "error",
+        "result": {
+          "error": {
+            "code": "RETRIEVAL_FAILED",
+            "description": "Evidence retrieval failed: ChromaDB index unreachable",
+            "http_status": 503
+          }
+        }
+      }
+    },
+    {
+      "iteration": 2,
+      "stage": "stop",
+      "detail": {
+        "stop_reason": "tool_error",
+        "fallback_applied": true,
+        "reason": "closing message unavailable or empty"
+      }
+    },
+    {
+      "iteration": 2,
+      "stage": "stop",
+      "detail": {
+        "stop_reason": "tool_error",
+        "summary": "A tool failed and could not be recovered from within 2 attempts (the allowed single re-plan was used); the loop stopped instead of guessing a result.",
+        "message_source": "loop_fallback"
+      }
+    }
+  ],
+  "history": [
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "call_s05a",
+          "type": "function",
+          "function": {
+            "name": "retrieve_evidence",
+            "arguments": "{\"query\": \"appeal examination result\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_s05a",
+      "content": "{\"error\": {\"code\": \"RETRIEVAL_FAILED\", \"description\": \"Evidence retrieval failed: ChromaDB index unreachable\", \"http_status\": 503}}"
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "call_s05b",
+          "type": "function",
+          "function": {
+            "name": "retrieve_evidence",
+            "arguments": "{\"query\": \"examination appeal procedure\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_s05b",
+      "content": "{\"error\": {\"code\": \"RETRIEVAL_FAILED\", \"description\": \"Evidence retrieval failed: ChromaDB index unreachable\", \"http_status\": 503}}"
+    },
+    {
+      "role": "assistant",
+      "content": null
+    }
+  ],
+  "reply": "I could not complete this because a service I depend on is not responding, so I have stopped rather than give you an unverified answer. Please try again later, or contact the office handling your case directly.",
+  "fallback_message": "I could not complete this because a service I depend on is not responding, so I have stopped rather than give you an unverified answer. Please try again later, or contact the office handling your case directly.",
+  "reply_source": "loop_fallback",
+  "error": null
+}

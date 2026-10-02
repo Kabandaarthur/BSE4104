@@ -301,7 +301,11 @@ def test_run_turn_single_tool_round(monkeypatch):
 
     assert result.reply.startswith("Category: case_status")
     assert result.tool_calls == ["get_case_status"]
-    assert result.rounds == 1
+    # Week 5 counts Sense/Plan/Act/Observe/Stop iterations, not tool rounds:
+    # iteration 1 requested the tool, iteration 2 answered from its result.
+    assert result.iterations == 2
+    assert result.rounds == 2
+    assert result.stop_reason == "goal_satisfied"
 
     assistant, tool_msg, final_assistant = result.history
     assert assistant["role"] == "assistant"
@@ -318,7 +322,10 @@ def test_run_turn_single_tool_round(monkeypatch):
     assert second[-1]["role"] == "tool"
 
 
-def test_run_turn_multiple_rounds(monkeypatch):
+def test_run_turn_approval_gate_stops_after_ticket(monkeypatch):
+    """A HIGH-urgency / EXAMINATION ticket trips the Human-in-the-Loop gate,
+    so the loop must NOT keep going to the get_case_status round the model
+    asked for. Week 5 behaviour: stop at the gate."""
     state = _script(
         monkeypatch,
         [
@@ -332,21 +339,22 @@ def test_run_turn_multiple_rounds(monkeypatch):
                     "urgency": "HIGH",
                 }, "call_1")],
             ),
-            FakeMessage(
-                content=None,
-                tool_calls=[fake_tool_call("get_case_status", {"case_id": "TCK-2026-0002"}, "call_2")],
-            ),
-            FakeMessage(content="Category: new_ticket\n\nYour ticket TCK-2026-0002 is logged."),
+            # closing message — the model explains the stop, tools detached
+            FakeMessage(content="Category: new_ticket\n\nYour ticket is pending staff review."),
         ],
     )
     result = run_turn("Raise a ticket for my exam clash.", system_prompt="SYSTEM")
 
-    assert result.tool_calls == ["create_support_ticket", "get_case_status"]
-    assert result.rounds == 2
+    assert result.tool_calls == ["create_support_ticket"]  # get_case_status never ran
+    assert result.stop_reason == "approval_pending"
+    assert result.iterations == 1
     created = json.loads(result.history[1]["content"])
     assert created["ticket_id"] == "TCK-2026-0002"
     assert created["status"] == "PENDING_STAFF_APPROVAL"
-    assert len(state["calls"]) == 3
+    assert created["requires_human_approval"] is True
+    # two model calls: the plan, then the closing message with tools detached
+    assert len(state["calls"]) == 2
+    assert state["calls"][1]["tools"] is None
 
 
 def test_run_turn_malformed_arguments_returns_validation_error(monkeypatch):
@@ -364,10 +372,11 @@ def test_run_turn_malformed_arguments_returns_validation_error(monkeypatch):
     tool_msg = result.history[1]
     payload = json.loads(tool_msg["content"])
     assert payload["error"]["code"] == "VALIDATION_FAILED"
-    assert result.rounds == 1
+    assert result.iterations == 2
+    assert result.stop_reason == "goal_satisfied"
 
 
-def test_run_turn_unknown_tool_payload(monkeypatch):
+def test_run_turn_undeclared_tool_is_refused_not_executed(monkeypatch):
     state = _script(
         monkeypatch,
         [
@@ -377,34 +386,51 @@ def test_run_turn_unknown_tool_payload(monkeypatch):
     )
     result = run_turn("Do the thing", system_prompt="SYSTEM")
     payload = json.loads(result.history[1]["content"])
-    assert payload["error"]["code"] == "UNKNOWN_TOOL"
+    # An undeclared tool is a contract violation refused by the loop, not an
+    # unknown-but-listed tool looked up in the handler registry.
+    assert payload["error"]["code"] == "UNDECLARED_TOOL"
+    assert result.tool_calls == ["invent_tool"]  # recorded, but never dispatched
 
 
 def test_run_turn_plain_reply_needs_no_tools(monkeypatch):
     state = _script(monkeypatch, [FakeMessage(content="Category: out_of_scope\n\nNo.")])
     result = run_turn("Admit me", system_prompt="SYSTEM")
     assert result.reply == "Category: out_of_scope\n\nNo."
-    assert result.rounds == 0
+    # One iteration: sense, plan (answer directly), stop — no tool ran.
+    assert result.iterations == 1
+    assert result.tool_calls == []
+    assert result.stop_reason == "goal_satisfied"
     assert result.history == [{"role": "assistant", "content": "Category: out_of_scope\n\nNo."}]
-    assert state["calls"][0]["tools"] is model_client.TOOLS
+    # The allow-list offered to the model is the three-tool Week 5 set.
+    assert [t["function"]["name"] for t in state["calls"][0]["tools"]] == [
+        "get_case_status",
+        "create_support_ticket",
+        "retrieve_evidence",
+    ]
 
 
 def test_run_turn_round_cap_closes_on_policy(monkeypatch):
     state = _script(
         monkeypatch,
         [
-            FakeMessage(content=None, tool_calls=[fake_tool_call("get_case_status", {"case_id": "CAS-2026-001"})]),
-            FakeMessage(content=None, tool_calls=[fake_tool_call("get_case_status", {"case_id": "CAS-2026-001"})]),
+            FakeMessage(content=None, tool_calls=[fake_tool_call("get_case_status", {"case_id": "CAS-2026-001"}, "call_1")]),
+            FakeMessage(content=None, tool_calls=[fake_tool_call("get_case_status", {"case_id": "CAS-2026-002"}, "call_2")]),
             FakeMessage(content="Category: case_status\n\nLookup unavailable; contact the office."),
         ],
     )
     result = run_turn("Status?", system_prompt="SYSTEM", max_rounds=1)
 
-    assert result.rounds == 1
+    assert result.iterations == 1
+    assert result.stop_reason == "round_limit_reached"
+    # The two calls differ, so the no-repeat rule doesn't fire first -- but
+    # only the first one ever ran: the cap is checked before dispatch, so the
+    # second is refused rather than executed.
     assert result.tool_calls == ["get_case_status"]
     assert result.reply == "Category: case_status\n\nLookup unavailable; contact the office."
-    exhausted = json.loads(result.history[-2]["content"])
-    assert exhausted["error"]["code"] == "TOOL_ROUNDS_EXCEEDED"
+    refused = [m for m in result.history if m["role"] == "tool"]
+    assert len(refused) == 2
+    assert json.loads(refused[0]["content"])["status"] == "IN_PROGRESS"
+    assert json.loads(refused[1]["content"])["error"]["code"] == "TOOL_ROUNDS_EXCEEDED"
     assert state["calls"][2]["tools"] is None
 
 
@@ -440,15 +466,52 @@ def test_orchestrator_ask_appends_evidence_block(monkeypatch):
 
 
 # --------------------------------------------------------------------------
-# Prompt Specification v3.0
+# Prompt Specification v4.0 — the Plan/Decide prompt
 # --------------------------------------------------------------------------
 
 
-def test_v3_available_and_default():
-    assert "v3.0" in available_versions()
-    assert DEFAULT_VERSION == "v3.0"
-    prompt = load_prompt_spec("v3.0")
-    assert "get_case_status" in prompt
-    assert "create_support_ticket" in prompt
+def test_v4_available_and_default():
+    assert "v4.0" in available_versions()
+    assert "v3.0" in available_versions()  # frozen, kept as version history
+    assert DEFAULT_VERSION == "v4.0"
+    prompt = load_prompt_spec("v4.0")
+    assert load_prompt_spec() == prompt  # default resolves to v4.0
+
+
+def test_v4_declares_all_three_tools():
+    prompt = load_prompt_spec("v4.0")
+    for tool in ("get_case_status", "retrieve_evidence", "create_support_ticket"):
+        assert tool in prompt, f"v4.0 must document the {tool} tool"
+    # v3.0's "exactly two tools" claim is what v4.0 exists to fix
+    assert "exactly two tools" not in prompt
+
+
+def test_v4_contains_plan_decide_scaffolding():
+    prompt = load_prompt_spec("v4.0")
+    for section in ("# CURRENT STATE", "# PLAN AND DECIDE", "# TOOLS", "# STOPPING"):
+        assert section in prompt, f"v4.0 is missing the {section} section"
+
+
+def test_v4_constrains_the_model_to_the_allow_list():
+    prompt = load_prompt_spec("v4.0")
+    # C12-C14 are the loop-safety rules added in v4.0
+    assert "C12 " in prompt and "C13 " in prompt and "C14 " in prompt
+    # the decision ladder, in the required order
+    ladder = prompt[prompt.index("# PLAN AND DECIDE") : prompt.index("# TOOLS")]
+    assert ladder.index("get_case_status") < ladder.index("retrieve_evidence")
+    assert ladder.index("retrieve_evidence") < ladder.index("create_support_ticket")
+
+
+def test_v4_requires_stop_when_goal_is_met():
+    prompt = load_prompt_spec("v4.0")
+    assert "could not fully resolve this" in prompt
+    assert "requires_human_approval" in prompt
+
+
+def test_v4_carries_forward_the_baseline_constraints():
+    prompt = load_prompt_spec("v4.0")
+    # Week 2/3 rules that must survive the v4.0 rework untouched
+    for rule in ("C1 ", "C2 ", "C3 ", "C4 ", "C5 ", "C6 ", "C7 ", "C8 ", "C9 ", "C10 ", "C11 "):
+        assert rule in prompt, f"v4.0 dropped {rule.strip()}"
+    assert "Category: <knowledge_question" in prompt
     assert "PENDING_STAFF_APPROVAL" in prompt
-    assert load_prompt_spec() == prompt  # default resolves to v3.0
