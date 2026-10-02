@@ -1,0 +1,37 @@
+============================= test session starts ==============================
+platform linux -- Python 3.11.0, pytest-8.3.3, pluggy-1.6.0 -- /home/asj/BSE4104/venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/asj/BSE4104
+plugins: anyio-4.15.1
+collecting ... collected 28 items
+
+tests/test_stop_conditions.py::test_exactly_four_stop_reasons_are_declared PASSED [  3%]
+tests/test_stop_conditions.py::test_every_stop_reason_is_self_describing PASSED [  7%]
+tests/test_stop_conditions.py::test_forced_stops_all_declare_a_non_empty_fallback_message PASSED [ 10%]
+tests/test_stop_conditions.py::test_undeclared_stop_reason_is_rejected PASSED [ 14%]
+tests/test_stop_conditions.py::test_goal_satisfied_when_model_answers_without_a_tool PASSED [ 17%]
+tests/test_stop_conditions.py::test_goal_satisfied_after_a_case_status_report PASSED [ 21%]
+tests/test_stop_conditions.py::test_goal_satisfied_after_evidence_backed_answer PASSED [ 25%]
+tests/test_stop_conditions.py::test_goal_satisfied_after_ticket_creation_without_approval PASSED [ 28%]
+tests/test_stop_conditions.py::test_round_limit_reached_stops_the_loop PASSED [ 32%]
+tests/test_stop_conditions.py::test_round_limit_reached_never_fails_silently PASSED [ 35%]
+tests/test_stop_conditions.py::test_round_limit_fallback_survives_a_failing_closing_call PASSED [ 39%]
+tests/test_stop_conditions.py::test_approval_gate_stops_the_run PASSED   [ 42%]
+tests/test_stop_conditions.py::test_approval_gate_message_is_pending_not_resolved PASSED [ 46%]
+tests/test_stop_conditions.py::test_approval_gate_fires_on_category_alone PASSED [ 50%]
+tests/test_stop_conditions.py::test_tool_failure_replans_once_then_stops PASSED [ 53%]
+tests/test_stop_conditions.py::test_single_tool_failure_still_replans PASSED [ 57%]
+tests/test_stop_conditions.py::test_tool_failure_never_fabricates_a_result PASSED [ 60%]
+tests/test_stop_conditions.py::test_business_errors_are_not_tool_failures PASSED [ 64%]
+tests/test_stop_conditions.py::test_all_four_stop_cases_produce_distinct_traces PASSED [ 67%]
+tests/test_stop_conditions.py::test_trace_records_sense_plan_and_observe_stages PASSED [ 71%]
+tests/test_stop_conditions.py::test_stop_reason_survives_the_orchestrator_wrapper PASSED [ 75%]
+tests/test_stop_conditions.py::test_v4_available_and_default PASSED      [ 78%]
+tests/test_stop_conditions.py::test_v4_declares_all_three_tools PASSED   [ 82%]
+tests/test_stop_conditions.py::test_v4_has_the_plan_decide_scaffolding PASSED [ 85%]
+tests/test_stop_conditions.py::test_v4_decision_ladder_is_ordered PASSED [ 89%]
+tests/test_stop_conditions.py::test_v4_constrains_the_model_to_the_allow_list PASSED [ 92%]
+tests/test_stop_conditions.py::test_v4_requires_a_honest_stop PASSED     [ 96%]
+tests/test_stop_conditions.py::test_v4_carries_forward_the_baseline_constraints PASSED [100%]
+
+============================== 28 passed in 3.87s ==============================

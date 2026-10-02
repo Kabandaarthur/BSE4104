@@ -46,8 +46,8 @@ Every week has: a focus area, required activities, and specific deliverables due
 | 1 ✅ | 31 Aug – 4 Sept | Problem framing & requirements | Project Charter, user stories, AI Boundary Matrix, architecture diagram |
 | 2 ✅ | 7 – 11 Sept | Foundation model & prompting | Working baseline model call, Model Selection Note, Prompt Spec v1.0, 10-case eval table |
 | 3 ✅ | 14 – 18 Sept | Context engineering & RAG | Corpus + retrieval pipeline, 15-case RAG eval |
-| 4 🔄 | 21 – 25 Sept | Tools & function calling | ≥2 tools, tool catalogue, failure/authorization tests |
-| 5 | 28 Sept – 2 Oct | Bounded agent | Agent loop, task contract, 3 execution traces |
+| 4 ✅ | 21 – 25 Sept | Tools & function calling | ≥2 tools, tool catalogue, failure/authorization tests |
+| 5 🔄 | 28 Sept – 2 Oct | Bounded agent | Agent loop, task contract, 3 execution traces |
 | 6 | 5 – 9 Oct | Memory, state & interoperability | State model, memory design note, integration/MCP spec |
 | 7 | 12 – 16 Oct | Evaluation & guardrails | 30-case eval set, traces, guardrails, failure catalogue |
 | 8 | 19 – 23 Oct | Hardening & demo | Final release, 8–12 page report, live presentation |
@@ -137,12 +137,47 @@ The API exposes `GET /health` and `POST /chat`. Example request body:
 
 ---
 
-## 8. Week 4: Tools & Function Calling Documentation
+## 8. Week 5: Bounded Agent Loop
 
-For Week 4, the agent is equipped with two deterministic, safe software capabilities:
-1. `get_case_status`: Look up the status of an existing case by its ID (e.g., `CAS-2026-001`).
-2. `create_support_ticket`: Draft and store a structured support ticket when procedural guidance cannot resolve an inquiry.
+One student message is driven through a bounded
+**Sense → Plan → Act → Observe → Stop** loop in `src/orchestrator.py`. The
+model chooses its next action each iteration from an allow-list of three
+tools, or stops:
 
-* **Tool Catalogue & Schemas**: [`docs/architecture/WEEK-4-TOOL-CATALOGUE.md`](docs/architecture/WEEK-4-TOOL-CATALOGUE.md)
-* **Human-in-the-Loop Policy**: [`docs/requirements/WEEK-4-HUMAN-APPROVAL-POLICY.md`](docs/requirements/WEEK-4-HUMAN-APPROVAL-POLICY.md)
-* **Week 4 Progress Report**: [`docs/weekly-reports/WEEK-4-PROGRESS-REPORT.md`](docs/weekly-reports/WEEK-4-PROGRESS-REPORT.md)
+1. `get_case_status` — read-only lookup of an existing case/ticket by ID.
+2. `create_support_ticket` — drafts and stores a structured support ticket
+   when procedural guidance cannot resolve the inquiry. `EXAMINATION` /
+   `HIGH` tickets are held for staff approval.
+3. `retrieve_evidence` — searches the official handbook/policy corpus from
+   *inside* the loop, so the model can decide partway through a run that it
+   needs to check what policy says.
+
+### Stop conditions
+
+Every run ends on exactly one of four named conditions, reported as
+`TurnResult.stop_reason` and as a structured entry in `TurnResult.trace`:
+
+| `stop_reason` | Trigger | What the student gets |
+|---|---|---|
+| `goal_satisfied` | Status reported, evidence cited, ticket created, or request refused | The model's final reply |
+| `round_limit_reached` | `MAX_TOOL_ROUNDS` hit without resolution | A human-readable "I could not fully resolve this" message — never a silent failure |
+| `approval_pending` | A ticket tripped the Human-in-the-Loop gate | Confirmation the request is pending staff review |
+| `tool_error` | A tool failed twice (the single allowed re-plan is spent) | An explanation that a service is unavailable — never a fabricated result |
+
+```bash
+# one turn, with the loop's own evidence printed underneath the reply
+python src/main.py "What's the status of case CAS-2026-001?"
+
+# run the stop-condition and Plan/Decide tests (no network)
+python -m pytest tests/test_stop_conditions.py -v
+```
+
+### Documentation
+
+* **Prompt Specification (current)**: [`prompts/v4.0.md`](prompts/v4.0.md) — the Plan/Decide prompt
+* **Prompt Specification history**: [`prompts/`](prompts) — v1.0, v2.0, v3.0 (frozen)
+* **Agent Task Contract**: `docs/architecture/Agent_Task_Contract.pdf`
+* **Week 4 Tool Catalogue**: `docs/architecture/University_Student_Support_Case_Agent_Week4_Tool_Catalogue.pdf`
+* **Human-in-the-Loop Policy**: `docs/requirements/BSE4104_Human_in_the_Loop_Authorization_Policy.pdf`
+* **Week 4 Progress Report**: `docs/weekly-reports/WEEK-4-PROGRESS-REPORT.pdf`
+* **Week 5 traces**: `evidence/traces/week5/`

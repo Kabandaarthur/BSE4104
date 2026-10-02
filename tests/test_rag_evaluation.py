@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from fastapi.testclient import TestClient
 from main import app
+from orchestrator import TurnResult
 
 client = TestClient(app)
 
@@ -16,9 +17,33 @@ USE_REAL_MODEL = os.getenv("RAG_EVAL_LIVE", "0") == "1"
 
 
 def _fake_call_model(system_prompt, user_message):
-    if "RETRIEVED EVIDENCE" in user_message:
-        return "I can answer this from the retrieved evidence."
-    return "I cannot answer that from the available knowledge or tools."
+    """Stub the model, keep retrieval real.
+
+    Week 5 moved retrieval *inside* the loop as the retrieve_evidence tool,
+    so the /chat path no longer pre-fetches evidence before calling the
+    model. These cases are about grounding -- whether the corpus can answer
+    the question and whether the agent admits when it cannot -- so the stub
+    still runs the real retriever and reports the sources it found, but
+    returns the same TurnResult shape the bounded loop produces.
+    """
+    from retriever import RetrievalError, retrieve
+
+    try:
+        chunks = retrieve(user_message)
+    except RetrievalError:
+        chunks = []
+
+    sources = []
+    for chunk in chunks:
+        if chunk.source not in sources:
+            sources.append(chunk.source)
+
+    reply = (
+        "I can answer this from the retrieved evidence."
+        if sources
+        else "I cannot answer that from the available knowledge or tools."
+    )
+    return TurnResult(reply=reply, sources=sources, stop_reason="goal_satisfied")
 
 
 @pytest.fixture(autouse=True)

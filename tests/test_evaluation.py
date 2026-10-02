@@ -31,6 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from fastapi.testclient import TestClient
 import main as main_module
+from orchestrator import TurnResult
 
 client = TestClient(main_module.app)
 
@@ -47,21 +48,27 @@ def _student_message(user_message: str) -> str:
     return user_message
 
 
-def _fake_call_model(system_prompt: str, user_message: str) -> str:
+def _fake_call_model(system_prompt: str, user_message: str):
     """
     Placeholder model behaviour so the harness is runnable before the
     real integration lands. Deliberately mimics roughly correct refusal
     behaviour so you can validate the TEST LOGIC now — this is NOT a
     substitute for actually running the real model before submission.
+
+    Week 5 note: the bounded loop returns a TurnResult (reply + what ran),
+    so the stub is wrapped in one. The reply text below is unchanged on
+    purpose: the T1-T10 cases are the Week 2 baseline and their assertions
+    are about *not fabricating* a policy answer or a case status, so the
+    scripted wording is what the harness is validating.
     """
     lowered = _student_message(user_message).lower()
     if any(word in lowered for word in ["admit", "grade", "waive", "fee", "discipl"]):
-        return "I'm not able to help with that — it's outside my scope and needs to go through the university office directly."
+        return TurnResult(reply="I'm not able to help with that — it's outside my scope and needs to go through the university office directly.")
     if "case" in lowered or "status" in lowered:
-        return "I don't have a live case-status lookup available yet, so I can't confirm that for you."
+        return TurnResult(reply="I don't have a live case-status lookup available yet, so I can't confirm that for you.")
     if lowered.strip() == "":
-        return "Could you tell me a bit more about what you need help with?"
-    return "I can help with that, but I don't have supporting documents loaded yet to give you a fully grounded answer."
+        return TurnResult(reply="Could you tell me a bit more about what you need help with?")
+    return TurnResult(reply="I can help with that, but I don't have supporting documents loaded yet to give you a fully grounded answer.")
 
 
 if not USE_REAL_MODEL:

@@ -41,6 +41,20 @@ The loop is bounded on every side the Agent Task Contract requires:
   * otherwise the run ends the normal way, once the model answers with no
     further tool calls -- stop_reason="goal_satisfied"
 
+Each of those four outcomes is a distinct STOP_REASONS entry: a canonical
+slug the trace reports, a one-line description of *why* the loop stopped, and
+a deterministic student-facing message. Every loop exit goes through
+_stop_reason(), so the four cases are separately nameable in the execution
+trace and in an assertion -- you never have to infer the stop condition from
+the reply text.
+
+A forced stop must never be a silent failure. _close() asks the model to
+explain the stop in its own words (with tools detached so it cannot ask for
+another round), but the model is not trusted to comply: if that final call
+returns nothing usable, the loop substitutes the deterministic message for
+that stop reason rather than returning an empty reply. The round-limit case
+in particular is required to read as "I could not fully resolve this".
+
 TurnResult.trace carries one entry per Sense/Plan/Act/Observe/Stop step,
 intended to be dumped straight into evidence/traces/ for the three required
 execution traces (Section 5 of the Week 5 plan).
@@ -59,7 +73,7 @@ from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
 
-from model_client import TOOLS, chat_completion
+from model_client import TOOLS, ModelClientError, chat_completion
 from prompt_loader import load_prompt_spec
 from retriever import retrieve, format_evidence, RetrievalError
 from tools.handlers import dispatch
@@ -126,6 +140,84 @@ ALLOWED_TOOL_NAMES = {
 }
 
 
+# --- The four termination cases -------------------------------------------
+# Every exit from run_turn() is one of these four. They are declared once,
+# here, so the condition is a named, testable value rather than a string
+# literal buried in the loop, and so the student-facing wording is owned by
+# the deterministic layer instead of depending on the model volunteering it.
+#
+#   summary         one line on why the loop stopped, copied into the trace
+#   final_message   the guaranteed fallback reply if the model's own closing
+#                   message is missing or unusable (never a silent failure)
+STOP_REASONS = {
+    "goal_satisfied": {
+        "summary": (
+            "The student's goal was met: the model reported a case status, "
+            "answered from retrieved evidence, or logged a support ticket."
+        ),
+        # The model authored the reply here; there is nothing to fall back to.
+        "final_message": None,
+    },
+    "round_limit_reached": {
+        "summary": (
+            f"The hard iteration cap (MAX_TOOL_ROUNDS, default "
+            f"{MAX_TOOL_ROUNDS}) was reached without the goal being met."
+        ),
+        "final_message": (
+            "I could not fully resolve this. I reached the limit of what I can "
+            "check in one go, so I have stopped rather than guess. Please "
+            "contact the office handling your case, quoting any case or ticket "
+            "ID above."
+        ),
+    },
+    "approval_pending": {
+        "summary": (
+            "The Human-in-the-Loop gate was hit: a create_support_ticket call "
+            "returned requires_human_approval=True, so the ticket is awaiting "
+            "staff review."
+        ),
+        "final_message": (
+            "Your request has been logged and is pending review by department "
+            "staff. No further action has been taken yet -- please wait for "
+            "staff to review it."
+        ),
+    },
+    "tool_error": {
+        "summary": (
+            f"A tool failed and could not be recovered from within "
+            f"{MAX_TOOL_ERROR_STRIKES} attempts (the allowed single re-plan "
+            f"was used); the loop stopped instead of guessing a result."
+        ),
+        "final_message": (
+            "I could not complete this because a service I depend on is not "
+            "responding, so I have stopped rather than give you an unverified "
+            "answer. Please try again later, or contact the office handling "
+            "your case directly."
+        ),
+    },
+}
+
+GOAL_SATISFIED = "goal_satisfied"
+ROUND_LIMIT_REACHED = "round_limit_reached"
+APPROVAL_PENDING = "approval_pending"
+TOOL_ERROR = "tool_error"
+
+
+class StopConditionError(RuntimeError):
+    """Raised when run_turn() is asked to stop under an undeclared reason.
+
+    Guards against a fifth, unnamed exit creeping into the loop later and
+    silently escaping the trace's vocabulary.
+    """
+
+    def __init__(self, stop_reason):
+        super().__init__(
+            f"Undeclared stop reason '{stop_reason}'. "
+            f"Allowed: {sorted(STOP_REASONS)}."
+        )
+        self.stop_reason = stop_reason
+
+
 @dataclass
 class TurnResult:
     reply: str
@@ -148,9 +240,16 @@ def build_messages(system_prompt, history, user_message):
 
 
 def _tool_call_dict(tool_call):
-    """Normalise either an SDK tool_call object or a raw dict to a JSON-safe dict."""
+    """Normalise either an SDK tool_call object or a raw dict to a JSON-safe dict.
+
+    Gemini attaches a `thought_signature` to each tool call in
+    `extra_content`; it must be replayed verbatim on the next request or the
+    API rejects the continuation. So extra_content is carried through instead
+    of being dropped by the normalisation.
+    """
     if isinstance(tool_call, dict):
         data = tool_call
+        extra_content = data.get("extra_content")
     else:
         function = getattr(tool_call, "function", None)
         data = {
@@ -161,15 +260,19 @@ def _tool_call_dict(tool_call):
                 "arguments": getattr(function, "arguments", "") or "",
             },
         }
+        extra_content = getattr(tool_call, "extra_content", None)
     function = data.get("function") or {}
     arguments = function.get("arguments")
     if not isinstance(arguments, str):
         arguments = json.dumps(arguments) if arguments is not None else ""
-    return {
+    normalized = {
         "id": data.get("id") or "",
         "type": data.get("type") or "function",
         "function": {"name": function.get("name") or "", "arguments": arguments},
     }
+    if extra_content:
+        normalized["extra_content"] = extra_content
+    return normalized
 
 
 def parse_tool_arguments(raw):
@@ -345,20 +448,30 @@ def run_turn(
     error_strikes = 0
     iteration = 0
 
-    def _close(stop_reason: str, completed_iterations: int) -> TurnResult:
-        """Make one final model call with no tools attached, so the model
-        closes the turn in its own words instead of us fabricating a
-        message -- used by every forced-stop path (round limit, approval
-        gate, repeated hard failure)."""
-        final_message = chat_completion(
-            messages, provider=provider, temperature=temperature, tools=None
+    def _result(
+        stop_reason: str,
+        reply: str,
+        completed_iterations: int,
+        message_source: str,
+    ) -> TurnResult:
+        """Build the TurnResult for a stop, recording the termination case as
+        a structured, nameable trace entry."""
+        spec = STOP_REASONS.get(stop_reason)
+        if spec is None:
+            raise StopConditionError(stop_reason)
+        trace.append(
+            {
+                "iteration": completed_iterations,
+                "stage": "stop",
+                "detail": {
+                    "stop_reason": stop_reason,
+                    "summary": spec["summary"],
+                    "message_source": message_source,
+                },
+            }
         )
-        assistant = _assistant_message(final_message)
-        messages.append(assistant)
-        turn.append(assistant)
-        trace.append({"iteration": iteration, "stage": "stop", "detail": stop_reason})
         return TurnResult(
-            reply=assistant.get("content") or "",
+            reply=reply,
             history=turn,
             tool_calls=invoked,
             executions=executions,
@@ -368,6 +481,71 @@ def run_turn(
             iterations=completed_iterations,
             stop_reason=stop_reason,
         )
+
+    def _close(stop_reason: str, completed_iterations: int) -> TurnResult:
+        """Stop a run the loop forced (round limit, approval gate, repeated
+        tool failure).
+
+        The model gets one last say, with tools detached so it cannot ask for
+        another round, so it explains the stop in its own words rather than us
+        fabricating prose. But the model is not trusted to comply: if that
+        call fails or comes back empty, we substitute this stop reason's
+        deterministic message. A forced stop is never a silent failure -- for
+        round_limit_reached that fallback is the required "I could not fully
+        resolve this" wording.
+        """
+        spec = STOP_REASONS.get(stop_reason)
+        if spec is None:
+            raise StopConditionError(stop_reason)
+
+        reply = ""
+        message_source = "loop_fallback"
+        try:
+            final_message = chat_completion(
+                messages, provider=provider, temperature=temperature, tools=None
+            )
+            assistant = _assistant_message(final_message)
+            messages.append(assistant)
+            turn.append(assistant)
+            reply = assistant.get("content") or ""
+            if reply.strip():
+                message_source = "model"
+        except ModelClientError as error:
+            # The closing call itself failed. Still stop cleanly with the
+            # deterministic message -- the run must end, not raise.
+            trace.append(
+                {
+                    "iteration": completed_iterations,
+                    "stage": "observe",
+                    "detail": {
+                        "tool": "(closing message)",
+                        "status": "error",
+                        "result": {
+                            "error": {
+                                "code": "MODEL_UNAVAILABLE",
+                                "description": str(error),
+                            }
+                        },
+                    },
+                }
+            )
+            reply = ""
+
+        if not reply.strip():
+            reply = spec["final_message"] or ""
+            trace.append(
+                {
+                    "iteration": completed_iterations,
+                    "stage": "stop",
+                    "detail": {
+                        "stop_reason": stop_reason,
+                        "fallback_applied": True,
+                        "reason": "closing message unavailable or empty",
+                    },
+                }
+            )
+
+        return _result(stop_reason, reply, completed_iterations, message_source)
 
     while True:
         iteration += 1
@@ -390,7 +568,9 @@ def run_turn(
         tool_calls = assistant.get("tool_calls") or []
 
         if not tool_calls:
-            # Stop: the model answered directly -- goal satisfied.
+            # Stop: the model answered directly and chose to stop -- the goal
+            # is met (a status was reported, evidence was cited, a ticket was
+            # created, or the request was correctly refused).
             trace.append(
                 {
                     "iteration": iteration,
@@ -398,19 +578,11 @@ def run_turn(
                     "detail": "model answered directly; no tool requested",
                 }
             )
-            trace.append(
-                {"iteration": iteration, "stage": "stop", "detail": "goal_satisfied"}
-            )
-            return TurnResult(
-                reply=assistant.get("content") or "",
-                history=turn,
-                tool_calls=invoked,
-                executions=executions,
-                sources=sources,
-                trace=trace,
-                rounds=iteration,
-                iterations=iteration,
-                stop_reason="goal_satisfied",
+            return _result(
+                GOAL_SATISFIED,
+                assistant.get("content") or "",
+                iteration,
+                "model",
             )
 
         parsed_calls = [parse_tool_call(call) for call in tool_calls]
@@ -423,14 +595,16 @@ def run_turn(
         )
 
         if iteration > max_rounds:
-            # Stop: hard iteration cap reached before these calls could
-            # run. Answer every outstanding call with the same error so
-            # the model can't silently skip explaining what happened.
+            # Stop: the hard iteration cap is reached before these calls could
+            # run. Answer every outstanding call with the same error so the
+            # model can't silently skip explaining what happened, then close
+            # the turn with a human-readable "could not fully resolve" message
+            # (_close guarantees that wording even if the model says nothing).
             for parsed in parsed_calls:
                 tool_msg = _tool_message(parsed["id"], _rounds_exceeded(max_rounds))
                 messages.append(tool_msg)
                 turn.append(tool_msg)
-            return _close("round_limit_reached", iteration - 1)
+            return _close(ROUND_LIMIT_REACHED, iteration - 1)
 
         # --- Act / Observe ---------------------------------------------
         approval_hit = False
@@ -469,14 +643,17 @@ def run_turn(
 
         # --- Stop / Re-plan ----------------------------------------------
         if approval_hit:
-            # Stop: Human-in-the-Loop gate hit -- never keep acting past
-            # a ticket that is now awaiting staff review.
-            return _close("approval_pending", iteration)
+            # Stop: Human-in-the-Loop gate hit (EXAMINATION / HIGH urgency) --
+            # never keep acting past a ticket that is now awaiting staff
+            # review. Unchanged from Week 4: the student is told the request
+            # is pending staff review.
+            return _close(APPROVAL_PENDING, iteration)
 
         if error_strikes >= MAX_TOOL_ERROR_STRIKES:
-            # Stop: a second hard failure this run -- re-plan once is the
-            # limit; never let the model keep guessing past that.
-            return _close("tool_error", iteration)
+            # Stop: a second hard failure this run. The single allowed
+            # re-plan is spent -- the loop stops rather than let the model
+            # keep guessing at a result the tool never returned.
+            return _close(TOOL_ERROR, iteration)
 
         # Otherwise: Re-plan. Loop back to Sense with the grown history.
 
