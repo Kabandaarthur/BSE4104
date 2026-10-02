@@ -1,0 +1,39 @@
+{
+    "reply": "Category: new_ticket\n\nYour support ticket has been successfully created. Here are the details of your ticket:\n\n- **Ticket ID**: TCK-2026-0002\n- **Status**: PENDING_STAFF_APPROVAL\n- **Routing Queue**: FACULTY_REGISTRAR_TRIAGE\n\nYour ticket has been logged and flagged for priority review by department staff before action is taken. Since this is an examination-related issue with high urgency, it is currently pending staff review and has not yet been approved or resolved.",
+    "sources": [],
+    "tools_used": [
+        {
+            "name": "retrieve_evidence",
+            "arguments": {
+                "query": "examination clash timetable conflict"
+            },
+            "status": "success",
+            "result": {
+                "found": false,
+                "sources": [],
+                "evidence": ""
+            }
+        },
+        {
+            "name": "create_support_ticket",
+            "arguments": {
+                "student_id": "2300000001",
+                "urgency": "HIGH",
+                "category": "EXAMINATION",
+                "details": "CS301 and STAT201 examinations are both timetabled for Friday 9am.",
+                "summary": "CS301 and STAT201 examinations are both timetabled for Friday 9am."
+            },
+            "status": "success",
+            "result": {
+                "ticket_id": "TCK-2026-0002",
+                "status": "PENDING_STAFF_APPROVAL",
+                "created_at": "2026-10-02T15:30:08+00:00",
+                "routing_queue": "FACULTY_REGISTRAR_TRIAGE",
+                "requires_human_approval": true,
+                "acknowledgment_message": "Your ticket has been logged and flagged for priority review by department staff before action is taken."
+            }
+        }
+    ],
+    "stop_reason": "approval_pending",
+    "iterations": 2
+}
