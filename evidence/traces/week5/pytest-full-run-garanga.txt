@@ -1,0 +1,12 @@
+........................................................................ [ 22%]
+........................................................................ [ 45%]
+........................................................................ [ 67%]
+........................................................................ [ 90%]
+.........................sssss                                           [100%]
+=============================== warnings summary ===============================
+.venv/lib/python3.14/site-packages/chromadb/telemetry/opentelemetry/__init__.py:128
+  <repo>/.venv/lib/python3.14/site-packages/chromadb/telemetry/opentelemetry/__init__.py:128: DeprecationWarning: 'asyncio.iscoroutinefunction' is deprecated and slated for removal in Python 3.16; use inspect.iscoroutinefunction() instead
+    if asyncio.iscoroutinefunction(f):
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+313 passed, 5 skipped, 1 warning in 16.33s

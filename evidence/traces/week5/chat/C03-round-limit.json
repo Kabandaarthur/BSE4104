@@ -1,0 +1,22 @@
+{
+    "reply": "Category: case_status\n\nNo case with the ID CAS-2026-999 exists in our registry. \n\nI was unable to fully resolve your request to raise a new ticket for your portal password issue because the system's tool limit was reached. Please contact the office handling your case directly for assistance with resetting your student portal password.",
+    "sources": [],
+    "tools_used": [
+        {
+            "name": "get_case_status",
+            "arguments": {
+                "case_id": "CAS-2026-999"
+            },
+            "status": "error",
+            "result": {
+                "error": {
+                    "code": "CASE_NOT_FOUND",
+                    "description": "No case with that ID exists in the registry.",
+                    "http_status": 404
+                }
+            }
+        }
+    ],
+    "stop_reason": "round_limit_reached",
+    "iterations": 1
+}
