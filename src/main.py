@@ -1,16 +1,22 @@
 """
-app.py
-------
-Week 4: the tool-calling Student-Support Case Agent.
+main.py
+-------
+Week 5: the /chat endpoint routed through the bounded agent loop.
 
-One student message is driven through src/orchestrator.py's tool-calling
-loop (model -> parse tool calls -> execute -> feed results back) up to
-MAX_TOOL_ROUNDS times, then the final answer is returned.
+Week 4 wired a single tool-calling round into this endpoint, and evidence
+was always fetched *before* the model was even called -- retrieval lived
+outside the loop entirely. Week 5 removes that pre-fetch: retrieval is now
+one of the actions the model can choose for itself, as the retrieve_evidence
+tool declared inside src/orchestrator.py's bounded Sense/Plan/Act/Observe/Stop
+loop. So a single POST /chat request can now trigger several internal steps
+-- a case-status lookup, a handbook search, a ticket creation, in whatever
+order the model decides it needs them -- before this endpoint returns
+exactly one final reply.
 
 Run:
-    python src/app.py                    # interactive CLI
-    python src/app.py "your message here"  # single-shot (used by the
-                                             # evaluation script)
+    python src/main.py                      # interactive CLI
+    python src/main.py "your message here"  # single-shot (used by the
+                                              # evaluation script)
 """
 
 import json
@@ -26,7 +32,6 @@ from pydantic import BaseModel
 from model_client import ModelClientError
 from orchestrator import run_turn
 from prompt_loader import load_prompt_spec
-from retriever import retrieve, format_evidence, RetrievalError
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger("rag")
@@ -39,8 +44,8 @@ class ChatRequest(BaseModel):
 
 
 class ToolExecution(BaseModel):
-    """One executed tool call: what was asked for, and what it returned
-    (or the error it raised) -- i.e. the tool's side effect."""
+    """One executed tool call this run: what was asked for, and what it
+    returned (or the error it raised) -- i.e. the tool's side effect."""
 
     name: str
     arguments: dict
@@ -52,105 +57,54 @@ class ChatResponse(BaseModel):
     reply: str
     sources: list[str] = []
     tools_used: list[ToolExecution] = []
+    # How the bounded loop ended this run, and how many Sense/Plan/Act/
+    # Observe iterations it took -- surfaced so a single /chat call makes
+    # its own multi-step behaviour visible, not just the final reply.
+    stop_reason: str = "goal_satisfied"
+    iterations: int = 0
 
 
 def call_model(system_prompt: str, user_message: str):
-    """Send one student message through the Week 4 tool-calling agent loop
-    and return the full TurnResult (reply + the tool-call/tool-result
-    history), so callers can see which tools ran and what they did."""
+    """Drive one student message through the Week 5 bounded Sense/Plan/Act/
+    Observe/Stop loop (src/orchestrator.py) and return the full TurnResult:
+    the reply, every tool that ran and what it returned, retrieval sources
+    gathered along the way, how many iterations it took, and why it
+    stopped."""
     return run_turn(user_message, system_prompt=system_prompt)
 
 
-def _source_ids(chunks) -> list[str]:
-    """De-duplicated, order-preserving list of source documents retrieval
-    actually used this turn (e.g. ['D03.txt']), for logging + API response."""
-    seen = []
-    for chunk in chunks:
-        if chunk.source not in seen:
-            seen.append(chunk.source)
-    return seen
+def ask(user_message: str):
+    """Send one student message through the bounded agent loop and return
+    (reply, sources, tools_used, stop_reason, iterations).
 
-
-def _tool_executions(history: list[dict]) -> list[ToolExecution]:
-    """Turn one turn's message history into an auditable list of what was
-    executed and what it returned.
-
-    `history` (TurnResult.history from orchestrator.run_turn) interleaves
-    assistant messages -- which may carry one or more `tool_calls` -- with
-    the role="tool" messages that answer each call by id. This walks the
-    history once to index every tool_call by id (name + parsed arguments),
-    then a second time to pair each tool result with its call, so each
-    ToolExecution carries the call and its outcome (success payload or
-    error payload) together.
+    Unlike Week 4, there is no retrieval pre-fetch here: retrieval is one
+    of the actions the model can choose *inside* the loop itself (the
+    retrieve_evidence tool in orchestrator.py). So this one call to
+    call_model() may internally run a case lookup, a handbook search, and
+    a ticket creation -- in whatever order the model decides -- before
+    returning a single final reply.
     """
-    calls_by_id = {}
-    for message in history:
-        if message.get("role") == "assistant":
-            for call in message.get("tool_calls") or []:
-                function = call.get("function", {})
-                try:
-                    arguments = json.loads(function.get("arguments") or "{}")
-                except json.JSONDecodeError:
-                    arguments = {}
-                calls_by_id[call["id"]] = {
-                    "name": function.get("name", ""),
-                    "arguments": arguments,
-                }
+    turn = call_model(load_prompt_spec(), user_message)
 
-    executions = []
-    for message in history:
-        if message.get("role") == "tool":
-            call_info = calls_by_id.get(message.get("tool_call_id"), {})
-            try:
-                result = json.loads(message.get("content") or "{}")
-            except json.JSONDecodeError:
-                result = {}
-            if not isinstance(result, dict):
-                result = {"value": result}
-            status = "error" if "error" in result else "success"
-            executions.append(
-                ToolExecution(
-                    name=call_info.get("name", "unknown"),
-                    arguments=call_info.get("arguments", {}),
-                    status=status,
-                    result=result,
-                )
-            )
-    return executions
+    tools_used = [ToolExecution(**execution) for execution in turn.executions]
 
-
-def ask(user_message: str) -> tuple[str, list[str], list[ToolExecution]]:
-    """Retrieve evidence for the message, ground the model call in it, and
-    return (reply, source_documents_used, tools_used)."""
-    try:
-        chunks = retrieve(user_message)
-    except RetrievalError as error:
-        # An index/query problem shouldn't take the whole agent down --
-        # fall back to ungrounded behaviour, which prompts/v2.0.md already
-        # handles via its "no RETRIEVED EVIDENCE" failure rules.
-        logger.warning("Retrieval failed, continuing without evidence: %s", error)
-        chunks = []
-
-    sources = _source_ids(chunks)
-    if sources:
-        logger.info("Query: %r -> retrieved evidence from: %s", user_message, sources)
-    else:
-        logger.info("Query: %r -> no supporting evidence retrieved", user_message)
-
-    prompt_message = user_message
-    if chunks:
-        prompt_message = f"{format_evidence(chunks)}\n\nStudent message:\n{user_message}"
-
-    turn = call_model(load_prompt_spec(), prompt_message)
-    tools_used = _tool_executions(turn.history)
     if tools_used:
         logger.info(
-            "Query: %r -> tools executed: %s",
+            "Query: %r -> tools executed: %s (stop_reason=%s, iterations=%d)",
             user_message,
             [t.name for t in tools_used],
+            turn.stop_reason,
+            turn.iterations,
+        )
+    else:
+        logger.info(
+            "Query: %r -> no tools executed (stop_reason=%s, iterations=%d)",
+            user_message,
+            turn.stop_reason,
+            turn.iterations,
         )
 
-    return turn.reply, sources, tools_used
+    return turn.reply, turn.sources, tools_used, turn.stop_reason, turn.iterations
 
 
 @app.get("/health")
@@ -161,8 +115,14 @@ def health() -> dict[str, str]:
 @app.post("/chat", response_model=ChatResponse)
 def chat_endpoint(request: ChatRequest) -> ChatResponse:
     try:
-        reply, sources, tools_used = ask(request.message)
-        return ChatResponse(reply=reply, sources=sources, tools_used=tools_used)
+        reply, sources, tools_used, stop_reason, iterations = ask(request.message)
+        return ChatResponse(
+            reply=reply,
+            sources=sources,
+            tools_used=tools_used,
+            stop_reason=stop_reason,
+            iterations=iterations,
+        )
     except ModelClientError as error:
         raise HTTPException(status_code=502, detail=str(error)) from error
 
@@ -176,8 +136,6 @@ def chat_endpoint(request: ChatRequest) -> ChatResponse:
 # received from the agent.
 # --------------------------------------------------------------------------
 
-# ANSI styling. If a terminal doesn't support color, these are just ignored
-# escape codes and everything still reads fine.
 _SUPPORTS_COLOR = sys.stdout.isatty()
 
 
@@ -187,8 +145,6 @@ def _c(code: str, text: str) -> str:
     return f"\033[{code}m{text}\033[0m"
 
 
-_RESET = "0"
-_DIM = "2"
 _BOLD = "1"
 _CYAN = "36"
 _GREEN = "32"
@@ -219,7 +175,7 @@ def _wrap(text: str, width: int) -> list[str]:
 
 def _print_banner():
     title = "Makerere University Student-Support Case Agent"
-    subtitle = "Week 4 · Tool-calling assistant (RAG + tools)"
+    subtitle = "Week 5 · Bounded agent loop (RAG + tools, chained)"
     print()
     print(_c(_BOLD + ";" + _CYAN, " " + title))
     print(_c(_GRAY, " " + subtitle))
@@ -241,14 +197,8 @@ def _print_student_message(message: str):
 
 
 def _split_paragraphs(text: str) -> list[str]:
-    """Turn the raw reply into a list of paragraphs for display.
-
-    The model already puts one idea per line (a category line, one
-    sentence per penalty/finding, a closing 'Sources:' line, etc.) --
-    the old version just dropped every blank line and printed all of
-    them back-to-back with zero spacing, which is what made replies look
-    like one crushed block. Here every non-empty line becomes its own
-    paragraph, so each one gets its own line(s) with a blank line between."""
+    """Turn the raw reply into a list of paragraphs for display: each
+    non-empty line becomes its own paragraph, with a blank line between."""
     return [line.strip() for line in text.strip().splitlines() if line.strip()] or [
         text.strip()
     ]
@@ -269,7 +219,13 @@ def _print_tool_executions(tools_used: list[ToolExecution]):
     print()
 
 
-def _print_agent_reply(response: str, sources: list[str], tools_used: list[ToolExecution] = None):
+def _print_agent_reply(
+    response: str,
+    sources: list[str],
+    tools_used: list[ToolExecution] = None,
+    stop_reason: str = "goal_satisfied",
+    iterations: int = 0,
+):
     label = _c(_BOLD + ";" + _GREEN, "Case Agent") + _c(_GRAY, f" {_timestamp()}")
     print(label)
     print()
@@ -295,6 +251,17 @@ def _print_agent_reply(response: str, sources: list[str], tools_used: list[ToolE
 
     _print_tool_executions(tools_used or [])
 
+    # Bounded-loop evidence: how many internal steps this one reply took,
+    # and why the loop stopped -- exactly what the Week 5 traces need to
+    # show happened "under the hood" of a single /chat request.
+    print(
+        _c(_GRAY, " loop: ")
+        + _c(_BOLD, f"{iterations} iteration{'s' if iterations != 1 else ''}")
+        + _c(_GRAY, "  stop_reason=")
+        + _c(_BOLD, stop_reason)
+    )
+    print()
+
     print(_rule())
     print()
 
@@ -316,11 +283,12 @@ def main():
         # single-shot mode, e.g. for scripted evaluation runs
         message = " ".join(sys.argv[1:])
         try:
-            reply, sources, tools_used = ask(message)
+            reply, sources, tools_used, stop_reason, iterations = ask(message)
             print(reply)
             print(f"[sources retrieved: {', '.join(sources) if sources else 'none'}]")
             if tools_used:
                 print(f"[tools executed: {', '.join(t.name for t in tools_used)}]")
+            print(f"[loop: {iterations} iteration(s), stop_reason={stop_reason}]")
         except ModelClientError as e:
             print(f"[ERROR] {e}")
         return
@@ -345,12 +313,12 @@ def main():
         _print_student_message(user_message)
 
         try:
-            response, sources, tools_used = ask(user_message)
+            response, sources, tools_used, stop_reason, iterations = ask(user_message)
         except ModelClientError as e:
             _print_error(str(e))
             continue
 
-        _print_agent_reply(response, sources, tools_used)
+        _print_agent_reply(response, sources, tools_used, stop_reason, iterations)
 
 
 if __name__ == "__main__":
