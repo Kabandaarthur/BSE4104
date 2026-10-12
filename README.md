@@ -180,4 +180,29 @@ python -m pytest tests/test_stop_conditions.py -v
 * **Week 4 Tool Catalogue**: `docs/architecture/University_Student_Support_Case_Agent_Week4_Tool_Catalogue.pdf`
 * **Human-in-the-Loop Policy**: `docs/requirements/BSE4104_Human_in_the_Loop_Authorization_Policy.pdf`
 * **Week 4 Progress Report**: `docs/weekly-reports/WEEK-4-PROGRESS-REPORT.pdf`
-* **Week 5 traces**: `evidence/traces/week5/`
+* **Week 5 traces**: `evidence/traces/week5/`
+
+---
+
+## 9. Week 6: MCP Interoperability Adapter
+
+The two Week 4 tools are exposed to external MCP clients over stdio
+(JSON-RPC 2.0, protocol **2025-06-18**) through `src/mcp/`. The adapter reuses
+the **same schemas** as the internal Gemini function declarations
+(`src/model_client.py`) and the **same error model** as the Week 4 Tool
+Catalogue, and the internal application has no MCP dependency — only
+`src/mcp/server.py` knows about the transport.
+
+```bash
+# speak MCP over stdio (an mcpServers.command entry point)
+cd src && python -m mcp.server
+# compatibility tests (no network)
+python -m pytest tests/test_mcp_adapter.py -v
+```
+
+### Documentation
+
+* **MCP Capability Specification**: `docs/architecture/MCP_CAPABILITY_SPEC.md`
+* **Interoperability Test Report**: `docs/evaluation/MCP_INTEROPERABILITY_REPORT.md`
+* **Week 6 State Model & Contract**: `docs/architecture/Week6_State_Model_and_Contract.pdf`
+* **Session memory code**: `src/session_store.py`, cookie sessions in `src/main.py`
