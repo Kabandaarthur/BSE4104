@@ -239,6 +239,40 @@ def build_messages(system_prompt, history, user_message):
     return messages
 
 
+def build_session_context(user_message: str, active_case_id: Optional[str]) -> str:
+    """Add only the approved session memory to the next student turn.
+
+    SessionStore deliberately persists an identifier, not raw messages or
+    tool output. The model must still call ``get_case_status`` to obtain
+    current ticket details.
+    """
+    if not active_case_id:
+        return user_message
+    return (
+        "[Session context: this session previously referenced "
+        f"case/ticket {active_case_id}. This is only an identifier; use the "
+        "case-status tool to check its current status. Do not infer approval "
+        "or resolution from this context.]\n\n"
+        f"{user_message}"
+    )
+
+
+def run_session_turn(
+    user_message: str,
+    system_prompt: str,
+    active_case_id: Optional[str] = None,
+    provider: Optional[str] = None,
+    max_rounds: int = MAX_TOOL_ROUNDS,
+) -> TurnResult:
+    """Run one turn with the approved, session-scoped memory only."""
+    return run_turn(
+        build_session_context(user_message, active_case_id),
+        system_prompt=system_prompt,
+        provider=provider,
+        max_rounds=max_rounds,
+    )
+
+
 def _tool_call_dict(tool_call):
     """Normalise either an SDK tool_call object or a raw dict to a JSON-safe dict.
 

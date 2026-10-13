@@ -47,7 +47,7 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel
 
 from model_client import ModelClientError
-from orchestrator import run_turn
+from orchestrator import run_session_turn
 from prompt_loader import load_prompt_spec
 from session_store import SESSION_EXPIRY_SECONDS, SessionStore
 
@@ -99,16 +99,6 @@ def _set_session_cookie(response: Response, session_id: str) -> None:
     )
 
 
-def _with_session_context(message: str, active_case_id: str) -> str:
-    return (
-        f"[Session context: earlier in this session the student was dealing "
-        f"with case/ticket {active_case_id}. This is only a remembered "
-        f"identifier. It says nothing about that case's current status or "
-        f"whether staff have approved it -- use the tools to check, and "
-        f"mention it only if the student's message is about it.]\n\n{message}"
-    )
-
-
 # --------------------------------------------------------------------------
 # API models
 # --------------------------------------------------------------------------
@@ -143,7 +133,7 @@ def call_model(system_prompt: str, user_message: str):
     """Drive one student message through the bounded Sense/Plan/Act/
     Observe/Stop loop (src/orchestrator.py) and return the full
     TurnResult."""
-    return run_turn(user_message, system_prompt=system_prompt)
+    return run_session_turn(user_message, system_prompt=system_prompt)
 
 
 def _extract_active_case_id(tools_used: List[ToolExecution]) -> Optional[str]:
@@ -210,11 +200,19 @@ def chat_endpoint(
         record = store.get_or_create(http_request.cookies.get(SESSION_COOKIE_NAME))
         session_id = record["session_id"]
         active_case_id = record["active_case_id"]
-        if active_case_id:
-            message = _with_session_context(message, active_case_id)
 
     try:
-        reply, sources, tools_used, stop_reason, iterations = ask(message)
+        if store is not None:
+            turn = run_session_turn(
+                message,
+                system_prompt=load_prompt_spec(),
+                active_case_id=active_case_id,
+            )
+            tools_used = [ToolExecution(**execution) for execution in turn.executions]
+            reply, sources = turn.reply, turn.sources
+            stop_reason, iterations = turn.stop_reason, turn.iterations
+        else:
+            reply, sources, tools_used, stop_reason, iterations = ask(message)
     except ModelClientError as error:
         raise HTTPException(status_code=502, detail=str(error)) from error
 
