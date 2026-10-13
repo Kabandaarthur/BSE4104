@@ -1,13 +1,8 @@
 """
 Week 6 state contract tests — University Student-Support Case Agent.
 
-This file defines the behavioural contract from
-docs/architecture/WEEK6_STATE_CONTRACT.md as executable tests. It is written
-before src/session_store.py exists, so every test will fail with an
-ImportError until that module is implemented — this is intentional and
-honest, the same approach used for the Week 3 RAG evaluation before
-retrieval was wired in. A failing import is not a bug in this file; it is
-the contract waiting for its implementation.
+This file defines the Week 6 state contract as executable tests, covering
+session lifecycle, approved stored fields, and approval-gate preservation.
 
 ASSUMED INTERFACE (src/session_store.py) — Tumukunde builds against this:
 
@@ -44,14 +39,22 @@ Run with:
 """
 
 import json
+import sys
 import time
 import uuid
+from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 
-# This import is expected to fail until Tumukunde implements the module.
-# That failure is correct, not an error in this test file.
-from src.session_store import SessionStore, SESSION_EXPIRY_SECONDS
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+
+import main as main_module
+import orchestrator as orchestrator_module
+from orchestrator import TurnResult
+from session_store import SESSION_EXPIRY_SECONDS, SessionStore
+from tools import mock_store
+from tools.handlers import create_support_ticket, get_case_status
 
 
 # --- Fixtures -----------------------------------------------------------
@@ -90,11 +93,9 @@ def test_active_case_id_persists(store):
     """
     record = store.get_or_create(None)
     session_id = record["session_id"]
-
     store.set_active_case_id(session_id, "CAS-2026-001")
 
     assert store.get_active_case_id(session_id) == "CAS-2026-001"
-
 
 # --- Section 3: Session Lifecycle ----------------------------------------
 
@@ -196,30 +197,80 @@ def test_cross_session_isolation(store):
 
 # --- Section 4.1: Memory must never bypass the Human-in-the-Loop gate ----
 
-@pytest.mark.skip(
-    reason=(
-        "Requires orchestrator integration (Garanga, Section 3 of the Week 6 "
-        "task table) — src/main.py is not yet routed through Orchestrator "
-        "with session awareness. Un-skip once that integration lands; do "
-        "not report this contract item as verified until this test runs "
-        "for real against the live /chat path, not just session_store in "
-        "isolation."
-    )
-)
-def test_memory_does_not_bypass_approval_gate():
+def test_memory_does_not_bypass_approval_gate(monkeypatch, tmp_path):
     """
     A remembered active_case_id pointing at a PENDING_STAFF_APPROVAL ticket
     must still be reported as pending on every later reference in the same
     session — remembering the ID must never imply or grant approval.
     """
-    raise NotImplementedError(
-        "Write this test against the real /chat endpoint once Tumukunde's "
-        "session wiring and Garanga's orchestrator integration are both "
-        "live. It must: (1) create an EXAMINATION ticket so its status is "
-        "PENDING_STAFF_APPROVAL, (2) ask a follow-up in the same session "
-        "referencing the remembered case, (3) assert the reply still says "
-        "'pending' and never 'approved' or 'resolved'."
-    )
+    monkeypatch.setenv("SESSIONS_ENABLED", "true")
+    monkeypatch.setenv("SESSION_STORE_PATH", str(tmp_path / "sessions.json"))
+    monkeypatch.setattr(main_module, "_session_store", None)
+    mock_store.reset_store()
+    created_ticket = {}
+
+    def fake_run_turn(user_message, system_prompt=None, **kwargs):
+        if "create an examination ticket" in user_message.lower():
+            ticket = create_support_ticket(
+                "2300708510",
+                "EXAMINATION",
+                "Missing examination result",
+                "My examination result is missing from the student portal.",
+                "MEDIUM",
+            )
+            created_ticket["ticket_id"] = ticket["ticket_id"]
+            return TurnResult(
+                reply=ticket["acknowledgment_message"],
+                executions=[{
+                    "name": "create_support_ticket",
+                    "arguments": {},
+                    "status": "success",
+                    "result": ticket,
+                }],
+                stop_reason="approval_pending",
+                iterations=1,
+            )
+
+        ticket_id = created_ticket["ticket_id"]
+        assert ticket_id in user_message
+        current = get_case_status(ticket_id)
+        return TurnResult(
+            reply=f"Current status: {current['status']}",
+            executions=[{
+                "name": "get_case_status",
+                "arguments": {"case_id": ticket_id},
+                "status": "success",
+                "result": current,
+            }],
+            stop_reason="goal_satisfied",
+            iterations=1,
+        )
+
+    monkeypatch.setattr(orchestrator_module, "run_turn", fake_run_turn)
+    try:
+        with TestClient(main_module.app) as client:
+            created = client.post(
+                "/chat", json={"message": "Please create an examination ticket"}
+            )
+            assert created.status_code == 200
+            ticket_id = created.json()["active_case_id"]
+            assert created.json()["tools_used"][0]["result"]["status"] == (
+                "PENDING_STAFF_APPROVAL"
+            )
+
+            follow_up = client.post(
+                "/chat", json={"message": "What is the current status?"}
+            )
+            assert follow_up.status_code == 200
+            assert follow_up.json()["active_case_id"] == ticket_id
+            assert follow_up.json()["tools_used"][0]["name"] == "get_case_status"
+            assert follow_up.json()["tools_used"][0]["result"]["status"] == (
+                "PENDING_STAFF_APPROVAL"
+            )
+            assert "pending" in follow_up.json()["reply"].lower()
+            assert "resolved" not in follow_up.json()["reply"].lower()
+    finally:
+        mock_store.reset_store()
 
 
 # --- Section 2: Durability — survives restart and corruption -------------

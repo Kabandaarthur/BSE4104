@@ -19,10 +19,10 @@ Run with:
 
 import json
 import os
-import select
+import queue
 import subprocess
 import sys
-import time
+import threading
 from pathlib import Path
 
 import pytest
@@ -338,13 +338,20 @@ def test_notification_gets_no_response():
 _REQUEST_TIMEOUT = 10
 
 
-def _client_request(proc, payload):
+def _read_server_output(stream, responses):
+    for line in iter(stream.readline, b""):
+        responses.put(line)
+    responses.put(None)
+
+
+def _client_request(proc, payload, responses):
     """Send one JSON-RPC request line, wait for the single response line."""
     proc.stdin.write(json.dumps(payload).encode("utf-8") + b"\n")
     proc.stdin.flush()
-    ready, _, _ = select.select([proc.stdout], [], [], _REQUEST_TIMEOUT)
-    assert ready, "MCP server did not respond in time"
-    line = proc.stdout.readline()
+    try:
+        line = responses.get(timeout=_REQUEST_TIMEOUT)
+    except queue.Empty:
+        raise AssertionError("MCP server did not respond in time") from None
     assert line, "MCP server closed stdout unexpectedly"
     return json.loads(line)
 
@@ -361,6 +368,11 @@ def test_subprocess_mcp_client_roundtrip():
         stderr=subprocess.PIPE,
         env=env,
     )
+    responses = queue.Queue()
+    reader = threading.Thread(
+        target=_read_server_output, args=(proc.stdout, responses), daemon=True
+    )
+    reader.start()
     try:
         init = _client_request(proc, {
             "jsonrpc": "2.0",
@@ -371,10 +383,12 @@ def test_subprocess_mcp_client_roundtrip():
                 "capabilities": {},
                 "clientInfo": {"name": "compat-test-client", "version": "0.0.1"},
             },
-        })
+        }, responses)
         assert init["result"]["protocolVersion"] == PROTOCOL_VERSION
 
-        listed = _client_request(proc, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
+        listed = _client_request(
+            proc, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}, responses
+        )
         names = [tool["name"] for tool in listed["result"]["tools"]]
         assert names == ["get_case_status", "create_support_ticket"]
 
@@ -383,7 +397,7 @@ def test_subprocess_mcp_client_roundtrip():
             "id": 3,
             "method": "tools/call",
             "params": {"name": "get_case_status", "arguments": {"case_id": "CAS-2026-003"}},
-        })
+        }, responses)
         assert called["result"]["isError"] is False
         assert called["result"]["structuredContent"]["status"] == "RESOLVED"
 
@@ -392,7 +406,7 @@ def test_subprocess_mcp_client_roundtrip():
             "id": 4,
             "method": "tools/call",
             "params": {"name": "create_support_ticket", "arguments": {"student_id": "123"}},
-        })
+        }, responses)
         assert rejected["error"]["code"] == JSONRPC_INVALID_PARAMS
         assert rejected["error"]["data"]["error"]["code"] == "VALIDATION_FAILED"
     finally:
@@ -401,3 +415,8 @@ def test_subprocess_mcp_client_roundtrip():
             proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
             proc.kill()
+            proc.wait(timeout=5)
+        reader.join(timeout=1)
+        proc.stdin.close()
+        proc.stdout.close()
+        proc.stderr.close()
