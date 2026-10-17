@@ -18,6 +18,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+import observability
 from indexer import COLLECTION_NAME, DEFAULT_INDEX_DIR, _open_collection
 from embeddings import get_embedding_function
 
@@ -60,23 +61,53 @@ def retrieve(query, top_k=DEFAULT_TOP_K, index_dir=DEFAULT_INDEX_DIR, embedding_
 
     embedding_function must match the one used to build the index (it embeds
     the query); defaults to the standard Gemini function.
+
+    Week 7: runs inside a `retrieval` stage of the active observability
+    trace. Only the query's length, counts, source doc IDs and latencies are
+    recorded -- never the query text or the retrieved passages.
     """
+    with observability.stage(
+        "retrieval", top_k=top_k, query_chars=len(query or "")
+    ) as span:
+        chunks = _retrieve(query, top_k, index_dir, embedding_function)
+        span.set(
+            chunks_returned=len(chunks),
+            sources=sorted({chunk.source for chunk in chunks}),
+        )
+        return chunks
+
+
+def _retrieve(query, top_k, index_dir, embedding_function):
     index_dir = Path(index_dir)
-    if not index_dir.is_dir() or not query.strip() or _is_unsupported_request(query):
+    short_circuit = None
+    if not index_dir.is_dir():
+        short_circuit = "no_index"
+    elif not query.strip():
+        short_circuit = "blank_query"
+    elif _is_unsupported_request(query):
+        short_circuit = "unsupported_request"
+    if short_circuit:
+        # Same early return as before; the reason is now visible in the trace.
+        observability.annotate(short_circuit=short_circuit)
         return []
 
-    collection = _open_collection(
-        index_dir, embedding_function=embedding_function or get_embedding_function()
-    )
-
-    try:
-        results = collection.query(
-            query_texts=[query],
-            n_results=min(max(top_k, RETRIEVAL_CANDIDATES), collection.count()),
-            include=["documents", "metadatas", "distances"],
+    with observability.stage("retrieval.open_index"):
+        collection = _open_collection(
+            index_dir, embedding_function=embedding_function or get_embedding_function()
         )
-    except Exception as error:
-        raise RetrievalError(f"Query failed: {error}") from error
+
+    # The query is embedded inside collection.query(), so this stage's
+    # latency includes the embedding call (the API round-trip for Gemini).
+    with observability.stage("retrieval.vector_query") as query_span:
+        try:
+            results = collection.query(
+                query_texts=[query],
+                n_results=min(max(top_k, RETRIEVAL_CANDIDATES), collection.count()),
+                include=["documents", "metadatas", "distances"],
+            )
+        except Exception as error:
+            raise RetrievalError(f"Query failed: {error}") from error
+        query_span.set(candidates=len((results.get("documents") or [[]])[0]))
 
     documents = (results.get("documents") or [[]])[0]
     metadatas = (results.get("metadatas") or [[]])[0]
@@ -105,30 +136,37 @@ def retrieve(query, top_k=DEFAULT_TOP_K, index_dir=DEFAULT_INDEX_DIR, embedding_
 
     # Short documents can rank below many broad manual chunks. Add exact
     # lexical matches from collection metadata before choosing the final top-k.
+    semantic_matches = len(chunks)
     present = {(chunk.source, chunk.chunk_index) for chunk in chunks}
-    all_entries = collection.get(include=["documents", "metadatas"])
-    for text, meta in zip(all_entries.get("documents", []), all_entries.get("metadatas", [])):
-        meta = meta or {}
-        source = str(meta.get("source", "unknown"))
-        chunk_index = int(meta.get("chunk_index", -1))
-        if (source, chunk_index) in present:
-            continue
-        chunk_terms = _content_terms(
-            f"{text} {meta.get('title', '')} {meta.get('heading', '')}"
-        )
-        overlap = len(query_terms & chunk_terms)
-        if overlap >= MIN_QUERY_TERM_MATCHES:
-            chunks.append(
-                RetrievedChunk(
-                    text=str(text),
-                    source=source,
-                    title=str(meta.get("title", "")),
-                    kind=str(meta.get("kind", "unknown")),
-                    heading=str(meta.get("heading", "")),
-                    chunk_index=chunk_index,
-                    distance=1.0,
-                )
+    with observability.stage("retrieval.lexical_scan") as scan_span:
+        all_entries = collection.get(include=["documents", "metadatas"])
+        for text, meta in zip(all_entries.get("documents", []), all_entries.get("metadatas", [])):
+            meta = meta or {}
+            source = str(meta.get("source", "unknown"))
+            chunk_index = int(meta.get("chunk_index", -1))
+            if (source, chunk_index) in present:
+                continue
+            chunk_terms = _content_terms(
+                f"{text} {meta.get('title', '')} {meta.get('heading', '')}"
             )
+            overlap = len(query_terms & chunk_terms)
+            if overlap >= MIN_QUERY_TERM_MATCHES:
+                chunks.append(
+                    RetrievedChunk(
+                        text=str(text),
+                        source=source,
+                        title=str(meta.get("title", "")),
+                        kind=str(meta.get("kind", "unknown")),
+                        heading=str(meta.get("heading", "")),
+                        chunk_index=chunk_index,
+                        distance=1.0,
+                    )
+                )
+        scan_span.set(
+            entries_scanned=len(all_entries.get("documents", [])),
+            lexical_additions=len(chunks) - semantic_matches,
+        )
+    observability.annotate(semantic_matches=semantic_matches)
     chunks.sort(key=lambda chunk: (
         -len(query_terms & _content_terms(f"{chunk.title} {chunk.heading}")),
         -len(query_terms & _content_terms(chunk.text)),
