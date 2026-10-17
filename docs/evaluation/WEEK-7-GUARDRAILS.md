@@ -71,7 +71,7 @@ Week 7. Test cases are in `tests/test_guardrails.py` unless stated.
 | ADV-17 | Session fixation (client chooses its own session id) | **[E]** unknown/malformed id never adopted; a new id is issued | `test_session_store.py::test_unknown_but_well_formed_id_is_never_adopted` | Supplied id ignored | `src/session_store.py:160` |
 | ADV-18 | Remembered case id used to imply approval | **[E]** memory stores only an identifier; status always re-read from the tool; approval status never stored | `test_g4_memory_context_cannot_claim_approval`; `test_state_contract.py::test_memory_does_not_bypass_approval_gate` (skip-noted) | Reply stays "pending"; no tool can approve | `src/session_store.py`; `src/main.py:102` |
 | ADV-19 | Any student reads any case (no own-case check on `/chat`) | **[GAP]** `get_case_status(session_student_id=…)` exists but is not wired; state contract forbids storing a student id | `test_orchestrator.py::test_get_case_status_authorizes_own_case_only` (handler level) | **Not implemented** — see §7.1 | `tests/test_tools.py` Known limitations; §7.1 |
-| ADV-20 | Hallucinated status / ticket id in the reply | **[E]** prompt C1/C10/C11 + Week 4 reply-fidelity checker; tool output is the only ground truth | `test_tools.py::test_checker_flags_a_reply_that_drifts_from_the_tool_result` etc. | Un-grounded ID/status is flagged; no status without a tool result | `tests/test_tools.py:687` |
+| ADV-20 | Hallucinated status / ticket id in the reply | **[E]** Grounded answer criteria GC-1…GC-6 in §2.1 (prompt C1/C10/C11/C14 + Week 4 reply-fidelity checker); tool output is the only ground truth | `test_tools.py::test_checker_flags_a_reply_that_drifts_from_the_tool_result`, `test_status_reply_matches_the_stored_record_exactly`, `test_not_found_reply_repeats_the_id_but_invents_no_status` | Un-grounded ID/status is flagged; no status without a tool result | `tests/test_tools.py:639,687,730` |
 | ADV-21 | Tool/store outage fabricated as a result | **[E]** `DATABASE_TIMEOUT` / `RETRIEVAL_FAILED` fail explicitly; loop's `tool_error` stop; never a guessed value | `test_tools.py::test_downtime_fails_explicitly_and_fast`; `test_stop_conditions.py::test_tool_failure_never_fabricates_a_result` | Explicit error, no data attached | `src/tools/mock_store.py`; `tests/test_stop_conditions.py:483` |
 | ADV-22 | Loop runs away or fails silently | **[E]** `MAX_TOOL_ROUNDS` / `MAX_TOOL_ERROR_STRIKES` bounds + deterministic fallback wording | `test_stop_conditions.py` (all four stops) | Named `stop_reason`; never an empty forced reply | `src/orchestrator.py:84`; `tests/test_stop_conditions.py` |
 | ADV-23 | Human-in-the-Loop gate bypassed by model persistence | **[E]** loop stops on `requires_human_approval`; closing call has tools detached | `test_stop_conditions.py::test_approval_gate_stops_the_run` | `approval_pending`; no further action | `src/orchestrator.py:637` |
@@ -79,6 +79,26 @@ Week 7. Test cases are in `tests/test_guardrails.py` unless stated.
 | ADV-25 | MCP surface drifts from the internal tool contract | **[E]** MCP schemas are the *same objects*; MCP reuses `dispatch` | `test_mcp_adapter.py` (28 tests) | Byte-for-byte schema parity; same error model | `docs/architecture/MCP_CAPABILITY_SPEC.md` |
 | ADV-26 | A future prompt revision silently drops a safety rule | **[N]** G5: pinned `DEFAULT_VERSION` + safety clauses (tool boundary, C6 privacy, C2/C4 approval, C1/C10 grounding) | `test_g5_v4_remains_the_approved_default`, `test_g5_prompt_safety_clauses_are_pinned` | A weakening change fails CI | `tests/test_guardrails.py` |
 | ADV-27 | Case-ID enumeration / no rate limit | **[GAP]** no per-session or per-IP rate limit in the sandbox | — | **Out of scope this week** — see §7.2 | §7.2 |
+
+### 2.1 Grounded answer criteria
+
+A reply counts as *grounded* only if **all six** hold. These are the criteria
+proposed for joint sign-off with Arthur (Requirements Lead) — §2's ADV-20 tests
+enforce GC-1/GC-5, and the G5 pins in §4 keep the prompt rules that produce
+them. Each has a deterministic, offline check; none requires a live model call.
+
+| # | Criterion | Why | Enforced by | Deterministic check |
+|---|---|---|---|---|
+| GC-1 | **No unsupported facts.** Every case status, ticket ID, deadline, fee amount or regulation asserted comes from a tool result or retrieved evidence — never from memory of the prompt. | C1 | Prompt C1; reply-fidelity checker | `test_tools.py::test_status_reply_matches_the_stored_record_exactly` (:639), `test_checker_flags_a_reply_that_drifts_from_the_tool_result` (:687), `test_not_found_reply_repeats_the_id_but_invents_no_status` (:730) |
+| GC-2 | **Citation integrity.** Every factual claim drawn from retrieved evidence carries its exact citation marker inline, and a trailing `Sources:` line lists every marker used. | C10 + OUTPUT FORMAT | Prompt C10 + output contract | `test_retrieval.py::test_pdf_chunks_carry_page_citations` (:129); prompt §OUTPUT FORMAT pinned by `test_g5_prompt_safety_clauses_are_pinned` |
+| GC-3 | **No invented tool arguments or results.** If an argument is missing, ask rather than fabricate. | C11 | Prompt C11 + schema validation | `test_mcp_adapter.py::test_unregistered_parameter_rejected_before_execution`; `test_orchestrator.py::test_run_turn_malformed_arguments_returns_validation_error` |
+| GC-4 | **Category header always first.** Line 1 is exactly `Category: <…>`, so downstream routing never guesses. | OUTPUT FORMAT | Prompt output contract | `test_tools.py` reply tests assert the header |
+| GC-5 | **Approval honesty.** A ticket with `requires_human_approval` is reported as pending and is never called approved/resolved later in the session. | C14 | Prompt C14 + loop stop | `test_stop_conditions.py::test_approval_gate_stops_the_run`; G5 pins C14 |
+| GC-6 | **No silent/empty reply.** Every turn ends in a named `stop_reason` with deterministic fallback wording — a forced blank reply is impossible. | Week 4/5 stop design | Loop stop conditions | `tests/test_stop_conditions.py` (all four stops) |
+
+**Gap (not claimed as met):** the *end-to-end* form of GC-5 on the live
+`/chat` path is the one skipped test described in §7.1 — it needs Tumukunde's
+session wiring first. GC-1…GC-4 and GC-6 are verified.
 
 ---
 
@@ -124,16 +144,29 @@ input-shape errors rather than surfacing as a confusing `CASE_NOT_FOUND`.
 | Week 7 acceptance criterion | How it is met |
 |---|---|
 | Adversarial cases are in the matrix | ADV-01…ADV-27 in §2, each with a control, test, expected behaviour and evidence |
+| Grounded answer criteria are defined (with Arthur) | GC-1…GC-6 in §2.1, each with its why (prompt rule), enforcement and deterministic check. **Sign-off pending:** Arthur reviews the criteria set; §7.1's live `/chat` form of GC-5 is the one item not yet verified |
 | Prompt changes do not weaken tool, privacy or approval rules | No prompt change (§5). G5 pins the tool/privacy/approval/grounding clauses so any future revision that drops them fails |
 | Every proposed guardrail has a deterministic regression case | G1 → `test_g1_*`; G2 → `test_g2_*`; G3 → `test_g3_*`; G5 → `test_g5_*`. All offline, 58 tests, 0 network |
 | No prompt revision made solely to improve a mock score | §5 records the decision and the evidence that the fix belongs at the deterministic layer |
+| Tool-boundary validation added in handlers.py (if justified) | Justified by the probe (§2 findings 1–3); implemented as G1/G2/G3 in `src/tools/handlers.py` and pinned by `test_guardrails.py` |
+| Any `src/orchestrator.py` change coordinated with Tumukunde | **No orchestrator file was changed** — the diff is `handlers.py` + tests + doc + evidence only. The changes Tumukunde owns are listed for him in §7.1/§7.3/§7.4 rather than made here |
 
 ---
 
 ## 5. Prompt revision decision — no `v5.0`
 
 **Decision:** `prompts/v4.0.md` remains the approved default; no `v5.0.md` was
-created. `src/prompt_loader.py` is unchanged.
+created. `src/prompt_loader.py` is unchanged (`DEFAULT_VERSION` still `v4.0`;
+`available_versions()` still lists `v1.0`–`v4.0` and no `v5.0` — pinned by
+`test_g5_v4_remains_the_approved_default`). `prompts/v4.0.md` is preserved as
+history: the Week 7 commit touches `src/tools/handlers.py`, tests, this doc and
+evidence only — zero diff under `prompts/`.
+
+**If a future evaluation does prove the prompt is the failing layer**, then —
+and only then — create `prompts/v5.0.md` (keeping v4.0 as history) and set
+`DEFAULT_VERSION = "v5.0"` in `src/prompt_loader.py`. That revision must not
+weaken the tool, privacy or approval clauses pinned by `test_g5_prompt_safety_clauses_are_pinned`,
+and must be justified by the evidence in §5, never by a mock score.
 
 **Reason (evidence-based):** the Week 7 probe failed at the deterministic tool
 boundary, not at the prompt:
