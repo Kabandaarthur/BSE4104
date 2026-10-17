@@ -73,6 +73,7 @@ from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
 
+import observability
 from model_client import TOOLS, ModelClientError, chat_completion
 from prompt_loader import load_prompt_spec
 from retriever import retrieve, format_evidence, RetrievalError
@@ -229,6 +230,9 @@ class TurnResult:
     rounds: int = 0
     iterations: int = 0
     stop_reason: str = "goal_satisfied"
+    # Week 7 observability (additive; empty when no trace was active):
+    correlation_id: str = ""
+    timings: Dict[str, Any] = field(default_factory=dict)
 
 
 def build_messages(system_prompt, history, user_message):
@@ -453,6 +457,39 @@ def _dispatch(name, arguments, seen_calls):
     return dispatch(name, arguments)
 
 
+# Codes meaning the loop's *contract* refused a call (it never executed),
+# as opposed to a tool that ran and failed. Recorded as outcome="refused".
+CONTRACT_VIOLATION_CODES = {"UNDECLARED_TOOL", "DUPLICATE_TOOL_CALL", "TOOL_ROUNDS_EXCEEDED"}
+
+
+def _annotate_tool_outcome(span, name, arguments, result, status):
+    """Record a tool call's outcome on its `act` stage.
+
+    Deliberately metadata only: the argument *names* (never values -- ticket
+    summaries are free text a student wrote), error code, HTTP status, and
+    whether the call hit the approval gate. No result bodies.
+    """
+    attrs = {
+        "status": status,
+        "argument_keys": sorted(arguments) if isinstance(arguments, dict) else None,
+    }
+    if status == "error":
+        error = result.get("error") or {}
+        code = error.get("code")
+        attrs.update(
+            error_code=code,
+            http_status=error.get("http_status"),
+            hard_failure=code in HARD_FAILURE_CODES,
+        )
+        span.set_outcome("refused" if code in CONTRACT_VIOLATION_CODES else "error")
+    else:
+        if result.get("requires_human_approval"):
+            attrs["requires_human_approval"] = True
+        if name == "retrieve_evidence":
+            attrs.update(found=result.get("found"), sources=result.get("sources"))
+    span.set(**attrs)
+
+
 def run_turn(
     user_message: str,
     system_prompt: str,
@@ -469,7 +506,28 @@ def run_turn(
     TurnResult.history contains only the messages appended during this
     turn (assistant turns and tool results), ready to be chained by a
     caller.
+
+    Week 7: the turn runs inside an observability trace (joining the
+    caller's if one is active, e.g. /chat's). Each model call is a `plan`
+    (or `close`) stage and each tool call an `act` stage; the result carries
+    the trace's correlation ID and a per-stage timing summary. If the model
+    call itself fails the exception still propagates exactly as before --
+    the trace records the error and its latency on the way out.
     """
+    with observability.start_trace(
+        name="agent_turn", max_rounds=max_rounds, tools_declared=len(tools or DEFAULT_TOOLS)
+    ) as trace:
+        result = _run_turn(
+            user_message, system_prompt, provider, history, tools, max_rounds, temperature
+        )
+        result.correlation_id = trace.correlation_id
+        result.timings = trace.snapshot()
+        return result
+
+
+def _run_turn(
+    user_message, system_prompt, provider, history, tools, max_rounds, temperature
+) -> TurnResult:
     tools = DEFAULT_TOOLS if tools is None else tools
     messages = build_messages(system_prompt, history, user_message)
 
@@ -504,6 +562,21 @@ def run_turn(
                 },
             }
         )
+        observability.record_event(
+            "stop",
+            stop_reason=stop_reason,
+            iterations=completed_iterations,
+            message_source=message_source,
+        )
+        observability.annotate_trace(
+            stop_reason=stop_reason,
+            iterations=completed_iterations,
+            tool_calls=len(invoked),
+            sources_found=len(sources),
+            reply_chars=len(reply),
+            message_source=message_source,
+        )
+        observability.set_outcome(stop_reason)
         return TurnResult(
             reply=reply,
             history=turn,
@@ -535,10 +608,13 @@ def run_turn(
         reply = ""
         message_source = "loop_fallback"
         try:
-            final_message = chat_completion(
-                messages, provider=provider, temperature=temperature, tools=None
-            )
-            assistant = _assistant_message(final_message)
+            with observability.stage(
+                "close", stop_reason=stop_reason, context_messages=len(messages)
+            ):
+                final_message = chat_completion(
+                    messages, provider=provider, temperature=temperature, tools=None
+                )
+                assistant = _assistant_message(final_message)
             messages.append(assistant)
             turn.append(assistant)
             reply = assistant.get("content") or ""
@@ -567,6 +643,9 @@ def run_turn(
 
         if not reply.strip():
             reply = spec["final_message"] or ""
+            observability.record_event(
+                "fallback_applied", stop_reason=stop_reason, reason="closing message unavailable or empty"
+            )
             trace.append(
                 {
                     "iteration": completed_iterations,
@@ -592,10 +671,14 @@ def run_turn(
         )
 
         # --- Plan -----------------------------------------------------
-        message = chat_completion(
-            messages, provider=provider, temperature=temperature, tools=tools
-        )
-        assistant = _assistant_message(message)
+        with observability.stage(
+            "plan", iteration=iteration, context_messages=len(messages)
+        ) as plan_span:
+            message = chat_completion(
+                messages, provider=provider, temperature=temperature, tools=tools
+            )
+            assistant = _assistant_message(message)
+            plan_span.set(tool_calls_requested=len(assistant.get("tool_calls") or []))
         messages.append(assistant)
         turn.append(assistant)
 
@@ -634,6 +717,9 @@ def run_turn(
             # model can't silently skip explaining what happened, then close
             # the turn with a human-readable "could not fully resolve" message
             # (_close guarantees that wording even if the model says nothing).
+            observability.record_event(
+                "round_limit", max_rounds=max_rounds, refused_calls=len(parsed_calls)
+            )
             for parsed in parsed_calls:
                 tool_msg = _tool_message(parsed["id"], _rounds_exceeded(max_rounds))
                 messages.append(tool_msg)
@@ -646,8 +732,10 @@ def run_turn(
             name, arguments = parsed["name"], parsed["arguments"]
             invoked.append(name)
 
-            result = _dispatch(name, arguments, seen_calls)
-            status = "error" if isinstance(result, dict) and "error" in result else "success"
+            with observability.stage("act", iteration=iteration, tool=name) as act_span:
+                result = _dispatch(name, arguments, seen_calls)
+                status = "error" if isinstance(result, dict) and "error" in result else "success"
+                _annotate_tool_outcome(act_span, name, arguments, result, status)
 
             trace.append(
                 {

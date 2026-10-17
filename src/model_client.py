@@ -5,6 +5,8 @@ import time
 from dotenv import load_dotenv
 from openai import APIConnectionError, APIStatusError, APITimeoutError, OpenAI
 
+import observability
+
 load_dotenv()
 
 DEFAULT_PROVIDER = os.getenv("LLM_PROVIDER", "gemini")
@@ -152,8 +154,37 @@ def chat_completion(messages, provider=None, temperature=0.4, max_tokens=None, t
     `.tool_calls`) so the orchestrator can parse tool requests, execute them
     and feed the results back. `tools` is the OpenAI/`v1beta/openai` tools
     list (see TOOLS above); when it is None the call is a plain text turn.
+
+    Week 7: the whole call (all retry attempts included) is one `model_call`
+    stage in the active observability trace; each attempt is a
+    `model_attempt` event. Only counts, status codes and latencies are
+    recorded -- never the messages, the reply, or the API key.
     """
+    with observability.stage(
+        "model_call",
+        messages=len(messages),
+        tools_attached=bool(tools),
+        temperature=temperature,
+    ):
+        return _chat_completion(
+            messages, provider, temperature, max_tokens, tools, tool_choice
+        )
+
+
+def _usage_counts(response):
+    """Token counts from a response, if the provider reported any."""
+    usage = getattr(response, "usage", None)
+    counts = {}
+    for field in ("prompt_tokens", "completion_tokens", "total_tokens"):
+        value = getattr(usage, field, None)
+        if isinstance(value, int) and not isinstance(value, bool):
+            counts[field] = value
+    return counts
+
+
+def _chat_completion(messages, provider, temperature, max_tokens, tools, tool_choice):
     name, config = _provider_config(provider)
+    observability.annotate(provider=name, model=config["model"])
     client = get_client(name)
     request = {
         "model": config["model"],
@@ -167,12 +198,24 @@ def chat_completion(messages, provider=None, temperature=0.4, max_tokens=None, t
 
     delay = CHAT_RETRY_BACKOFF
     for attempt in range(1, CHAT_RETRY_ATTEMPTS + 1):
+        attempt_started = observability.now()
         try:
             response = client.chat.completions.create(**request)
-            return response.choices[0].message
+            first_choice = response.choices[0]
+            observability.record_event(
+                "model_attempt",
+                attempt=attempt,
+                outcome="ok",
+                duration_ms=observability.elapsed_ms(attempt_started),
+                finish_reason=getattr(first_choice, "finish_reason", None),
+                **_usage_counts(response),
+            )
+            observability.annotate(attempts=attempt)
+            return first_choice.message
         except (APIStatusError, APIConnectionError, APITimeoutError) as error:
             status = getattr(error, "status_code", None)
             transient = isinstance(error, (APIConnectionError, APITimeoutError)) or status in RETRYABLE_STATUS
+            attempt_ms = observability.elapsed_ms(attempt_started)
             if transient and attempt < CHAT_RETRY_ATTEMPTS:
                 suggested = None
                 body = getattr(getattr(error, "response", None), "text", "") or ""
@@ -185,9 +228,28 @@ def chat_completion(messages, provider=None, temperature=0.4, max_tokens=None, t
                     f"{attempt}/{CHAT_RETRY_ATTEMPTS}; retrying in {wait:.0f}s",
                     flush=True,
                 )
+                observability.record_event(
+                    "model_attempt",
+                    attempt=attempt,
+                    outcome="retry",
+                    duration_ms=attempt_ms,
+                    status=status,
+                    error_type=type(error).__name__,
+                    retry_wait_s=wait,
+                )
                 time.sleep(wait)
                 delay = min(delay * 2, CHAT_RETRY_MAX_WAIT)
                 continue
+            observability.record_event(
+                "model_attempt",
+                attempt=attempt,
+                outcome="error",
+                duration_ms=attempt_ms,
+                status=status,
+                error_type=type(error).__name__,
+                retryable=transient,
+            )
+            observability.annotate(attempts=attempt, status=status)
             raise ModelClientError(
                 f"Model request failed after {attempt} attempt(s) "
                 f"(status={status}): {error}"

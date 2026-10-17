@@ -46,6 +46,7 @@ from typing import List, Optional
 from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel
 
+import observability
 from model_client import ModelClientError
 from orchestrator import run_session_turn
 from prompt_loader import load_prompt_spec
@@ -159,18 +160,25 @@ def ask(user_message: str):
     """Send one student message through the bounded agent loop and return
     (reply, sources, tools_used, stop_reason, iterations). Session-free:
     chat_endpoint() wraps this with session handling when enabled."""
-    turn = call_model(load_prompt_spec(), user_message)
+    # Joins /chat's trace when there is one; opens its own for the CLI and
+    # single-shot paths.
+    with observability.start_trace(name="ask", message_chars=len(user_message)):
+        turn = call_model(load_prompt_spec(), user_message)
     tools_used = [ToolExecution(**execution) for execution in turn.executions]
 
+    # The query is logged through redact_text: student numbers, contact
+    # details and anything key-like are masked before the line is written.
+    logged_query = observability.redact_text(user_message, 200)
     if tools_used:
         logger.info(
-            "Query: %r -> tools executed: %s (stop_reason=%s, iterations=%d)",
-            user_message, [t.name for t in tools_used], turn.stop_reason, turn.iterations,
+            "[%s] Query: %r -> tools executed: %s (stop_reason=%s, iterations=%d)",
+            turn.correlation_id, logged_query, [t.name for t in tools_used],
+            turn.stop_reason, turn.iterations,
         )
     else:
         logger.info(
-            "Query: %r -> no tools executed (stop_reason=%s, iterations=%d)",
-            user_message, turn.stop_reason, turn.iterations,
+            "[%s] Query: %r -> no tools executed (stop_reason=%s, iterations=%d)",
+            turn.correlation_id, logged_query, turn.stop_reason, turn.iterations,
         )
 
     return turn.reply, turn.sources, tools_used, turn.stop_reason, turn.iterations
@@ -190,43 +198,77 @@ def health() -> dict[str, str]:
 def chat_endpoint(
     request: ChatRequest, http_request: Request, response: Response
 ) -> ChatResponse:
+    """Run one student message through the bounded agent loop.
+
+    Week 7: the request is one observability trace. Its correlation ID is
+    the caller's `X-Correlation-ID` if that is a safe value, otherwise a
+    fresh one, and is returned in the same response header -- on success
+    and on the 502 error path alike -- so a log line, a trace and a
+    student's bug report can be tied together. The JSON body is unchanged.
+    """
+    incoming = observability.sanitize_correlation_id(
+        http_request.headers.get(observability.CORRELATION_HEADER)
+    )
+    with observability.start_trace(
+        incoming,
+        name="chat_request",
+        sessions_enabled=sessions_enabled(),
+        message_chars=len(request.message),
+    ) as trace:
+        response.headers[observability.CORRELATION_HEADER] = trace.correlation_id
+        result = _handle_chat(request, http_request, response)
+        trace.set(http_status=200)
+        return result
+
+
+def _handle_chat(
+    request: ChatRequest, http_request: Request, response: Response
+) -> ChatResponse:
     store = None
     session_id = None
     active_case_id = None
     message = request.message
 
     if sessions_enabled():
-        store = get_session_store()
-        record = store.get_or_create(http_request.cookies.get(SESSION_COOKIE_NAME))
+        with observability.stage("session_load"):
+            store = get_session_store()
+            record = store.get_or_create(http_request.cookies.get(SESSION_COOKIE_NAME))
         session_id = record["session_id"]
         active_case_id = record["active_case_id"]
 
     try:
-        if store is not None:
-            turn = run_session_turn(
-                message,
-                system_prompt=load_prompt_spec(),
-                active_case_id=active_case_id,
-            )
-            tools_used = [ToolExecution(**execution) for execution in turn.executions]
-            reply, sources = turn.reply, turn.sources
-            stop_reason, iterations = turn.stop_reason, turn.iterations
-        else:
-            reply, sources, tools_used, stop_reason, iterations = ask(message)
+        with observability.stage("agent_turn", session_active=store is not None):
+            if store is not None:
+                turn = run_session_turn(
+                    message,
+                    system_prompt=load_prompt_spec(),
+                    active_case_id=active_case_id,
+                )
+                tools_used = [ToolExecution(**execution) for execution in turn.executions]
+                reply, sources = turn.reply, turn.sources
+                stop_reason, iterations = turn.stop_reason, turn.iterations
+            else:
+                reply, sources, tools_used, stop_reason, iterations = ask(message)
     except ModelClientError as error:
-        raise HTTPException(status_code=502, detail=str(error)) from error
+        observability.annotate_trace(http_status=502, error_type=type(error).__name__)
+        raise HTTPException(
+            status_code=502,
+            detail=str(error),
+            headers={observability.CORRELATION_HEADER: observability.current_correlation_id()},
+        ) from error
 
     if store is not None:
-        new_case_id = _extract_active_case_id(tools_used)
-        if new_case_id and new_case_id != active_case_id:
-            try:
-                store.set_active_case_id(session_id, new_case_id)
-                active_case_id = new_case_id
-            except ValueError:
-                # Not a plain identifier: never remembered. The reply is
-                # unaffected -- memory is a convenience, not a dependency.
-                logger.warning("Ignoring case id that is not a plain identifier.")
-        _set_session_cookie(response, session_id)
+        with observability.stage("session_save"):
+            new_case_id = _extract_active_case_id(tools_used)
+            if new_case_id and new_case_id != active_case_id:
+                try:
+                    store.set_active_case_id(session_id, new_case_id)
+                    active_case_id = new_case_id
+                except ValueError:
+                    # Not a plain identifier: never remembered. The reply is
+                    # unaffected -- memory is a convenience, not a dependency.
+                    logger.warning("Ignoring case id that is not a plain identifier.")
+            _set_session_cookie(response, session_id)
 
     return ChatResponse(
         reply=reply,
