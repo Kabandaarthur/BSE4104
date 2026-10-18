@@ -41,9 +41,12 @@ import os
 import sys
 import textwrap
 from datetime import datetime
+from pathlib import Path
 from typing import List, Optional
 
 from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import observability
@@ -58,6 +61,8 @@ logger = logging.getLogger("rag")
 app = FastAPI(title="University Student-Support Case Agent")
 
 SESSION_COOKIE_NAME = "session_id"
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 # --------------------------------------------------------------------------
@@ -192,6 +197,11 @@ def ask(user_message: str):
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/", include_in_schema=False)
+def web_ui() -> FileResponse:
+    return FileResponse(STATIC_DIR / "index.html")
 
 
 @app.post("/chat", response_model=ChatResponse)

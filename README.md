@@ -130,9 +130,17 @@ python src/main.py "What are the penalties for examination malpractice?"
 
 # FastAPI server
 uvicorn main:app --app-dir src --reload
+
+# FastAPI server with optional case-session memory
+$env:SESSIONS_ENABLED = "true"
+uvicorn main:app --app-dir src --reload
 ```
 
-The API exposes `GET /health` and `POST /chat`. Example request body:
+Open `http://127.0.0.1:8000/` for the browser chat interface. It displays
+grounded sources and tool actions returned by the agent. Session memory is
+off by default; enable it with the command above to keep an active case ID
+between messages. The API also exposes `GET /health`, `POST /chat`, and
+`POST /session/reset` when sessions are enabled. Example request body:
 
 ```json
 {"message":"What are the penalties for examination malpractice?"}

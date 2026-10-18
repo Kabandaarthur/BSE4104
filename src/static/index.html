@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4f5ef">
+  <title>Student Support | Makerere University</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="Makerere Student Support home">
+        <span class="brand-mark" aria-hidden="true">M</span>
+        <span class="brand-copy">
+          <strong>Makerere</strong>
+          <span>STUDENT SUPPORT</span>
+        </span>
+      </a>
+      <div class="topbar-meta">
+        <span class="service-state"><span class="state-dot"></span><span id="service-label">Checking service</span></span>
+        <span class="term-label">ACADEMIC SUPPORT</span>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <aside class="rail" aria-label="Support details">
+        <div class="rail-heading">
+          <span class="eyebrow">YOUR SUPPORT DESK</span>
+          <h1>Here to help<br>you move forward.</h1>
+          <p>Ask about university procedures, follow up a case, or get help raising a support request.</p>
+        </div>
+
+        <section class="case-panel" aria-live="polite">
+          <div class="section-label"><span>ACTIVE CASE</span><span class="case-indicator"></span></div>
+          <p id="case-value" class="case-empty">No case linked to this session</p>
+        </section>
+
+        <div class="rail-rule"></div>
+        <div class="scope-note">
+          <span class="scope-mark" aria-hidden="true">i</span>
+          <p>Guidance is informational. University staff make decisions about admissions, grades, fees, and discipline.</p>
+        </div>
+        <div class="rail-foot">MAKERERE UNIVERSITY <span>·</span> STUDENT SERVICES</div>
+      </aside>
+
+      <section class="chat-panel" aria-label="Student support conversation">
+        <div class="chat-heading">
+          <div>
+            <span class="eyebrow">STUDENT SERVICES / CHAT</span>
+            <h2>How can we help?</h2>
+          </div>
+          <button id="reset-button" class="reset-button" type="button" title="Clear this conversation and reset saved case context">
+            <span aria-hidden="true">↺</span> Reset
+          </button>
+        </div>
+
+        <div id="conversation" class="conversation" role="log" aria-live="polite" aria-relevant="additions">
+          <div class="welcome-block" id="welcome-block">
+            <div class="welcome-rule"><span>01</span><span>START A CONVERSATION</span></div>
+            <p class="welcome-copy">What would you like<br>to sort out today?</p>
+            <div class="suggestions" aria-label="Suggested questions">
+              <button class="suggestion" type="button" data-message="How do I check the status of my support case?">Check a support case <span aria-hidden="true">↗</span></button>
+              <button class="suggestion" type="button" data-message="Where can I find information about course registration?">Ask about registration <span aria-hidden="true">↗</span></button>
+              <button class="suggestion" type="button" data-message="I need help with an issue that is not answered by the handbook.">Get help with an issue <span aria-hidden="true">↗</span></button>
+            </div>
+          </div>
+        </div>
+
+        <form id="chat-form" class="composer">
+          <label class="sr-only" for="message-input">Your message</label>
+          <textarea id="message-input" name="message" rows="1" maxlength="4000" placeholder="Write your question here..." required></textarea>
+          <div class="composer-bottom">
+            <span class="composer-hint">Do not include passwords or payment details.</span>
+            <button id="send-button" class="send-button" type="submit" aria-label="Send message">
+              <span>Send</span><span aria-hidden="true">↑</span>
+            </button>
+          </div>
+        </form>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
