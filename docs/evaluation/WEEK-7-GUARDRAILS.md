@@ -9,8 +9,15 @@ pins it, the expected behaviour, and where the evidence lives. §5 records the
 prompt-revision decision (no `v5.0` was justified). §7 lists the gaps that need
 coordination with Tumukunde (orchestrator/state) rather than a handlers edit.
 
-Everything here is enforced and tested **deterministically and offline** — no
-live model call is required to verify a guardrail.
+The implemented tool-boundary controls and their listed regression tests are
+verified **deterministically and offline** — no live model call is required
+for those checks. Gaps marked **[GAP]** are not implemented or verified by
+this document.
+
+The checked-in Week 7 evidence includes pytest output, not request-level
+agent traces. Live pilot observations and the remaining authorization and
+observability gaps are tracked in the [evaluation results](WEEK-7-EVALUATION-RESULTS.md)
+and [failure catalogue](WEEK-7-FAILURE-CATALOGUE.md).
 
 ---
 
@@ -270,3 +277,9 @@ full suite (6 skips are the opt-in live-model tests).
 `create_support_ticket`); new evidence under `evidence/traces/week7/`. No change
 to `prompts/`, `src/prompt_loader.py`, `src/orchestrator.py`, `src/main.py`, or
 `src/mcp/`.
+
+The evidence directory contains the focused guardrail and full-suite pytest
+outputs; it does not contain sanitized request traces or a Week 7 trace-capture
+entry point. See the [failure catalogue](WEEK-7-FAILURE-CATALOGUE.md) for the
+reproduced pre-fix defects, post-fix tests, and live-pilot failures that still
+need retesting.

@@ -49,8 +49,11 @@ Every week has: a focus area, required activities, and specific deliverables due
 | 4 ✅ | 21 – 25 Sept | Tools & function calling | ≥2 tools, tool catalogue, failure/authorization tests |
 | 5 🔄 | 28 Sept – 2 Oct | Bounded agent | Agent loop, task contract, 3 execution traces |
 | 6 | 5 – 9 Oct | Memory, state & interoperability | State model, memory design note, integration/MCP spec |
-| 7 | 12 – 16 Oct | Evaluation & guardrails | 30-case eval set, traces, guardrails, failure catalogue |
+| 7 ✅* | 12 – 16 Oct | Evaluation & guardrails | 30-case set, deterministic guardrails, partial live pilot; final scoring and request traces remain incomplete |
 | 8 | 19 – 23 Oct | Hardening & demo | Final release, 8–12 page report, live presentation |
+
+`✅*` means the Week 7 deterministic guardrail implementation is complete; the
+30-case evaluation and full Week 7 exit gate remain incomplete.
 
 **Every Friday:** whoever owns that week's progress report posts it to `docs/weekly-reports/`, links the relevant commits/PRs and ClickUp tasks, and includes an individual contribution summary for each member.
 
@@ -205,4 +208,28 @@ python -m pytest tests/test_mcp_adapter.py -v
 * **MCP Capability Specification**: `docs/architecture/MCP_CAPABILITY_SPEC.md`
 * **Interoperability Test Report**: `docs/evaluation/MCP_INTEROPERABILITY_REPORT.md`
 * **Week 6 State Model & Contract**: `docs/architecture/Week6_State_Model_and_Contract.pdf`
-* **Session memory code**: `src/session_store.py`, cookie sessions in `src/main.py`
+* **Session memory code**: `src/session_store.py`, cookie sessions in `src/main.py`
+
+---
+
+## 10. Week 7: Evaluation and Guardrails
+
+The Week 7 case set contains 30 synthetic scenarios across six categories.
+Deterministic tool-boundary guardrails are implemented and tested, but the
+30-case scored evaluation is incomplete: the live pilot was interrupted by
+provider rate limits, and authorization and request-level trace coverage have
+not been verified. Test-run output is checked in; it is not a substitute for
+sanitized per-request traces.
+
+* **Evaluation cases**: [`docs/evaluation/WEEK-7-EVALUATION-CASES.json`](docs/evaluation/WEEK-7-EVALUATION-CASES.json)
+* **Results and limitations**: [`docs/evaluation/WEEK-7-EVALUATION-RESULTS.md`](docs/evaluation/WEEK-7-EVALUATION-RESULTS.md)
+* **Guardrail matrix**: [`docs/evaluation/WEEK-7-GUARDRAILS.md`](docs/evaluation/WEEK-7-GUARDRAILS.md)
+* **Failure catalogue**: [`docs/evaluation/WEEK-7-FAILURE-CATALOGUE.md`](docs/evaluation/WEEK-7-FAILURE-CATALOGUE.md)
+* **Progress report**: [`docs/weekly-reports/Week_7_Progress_Report.md`](docs/weekly-reports/Week_7_Progress_Report.md)
+* **Test evidence**: `evidence/traces/week7/pytest-guardrails-run.txt` and `evidence/traces/week7/pytest-full-run.txt`
+
+The recorded regression run is **434 passed, 6 skipped**; the skips are
+credential-gated live-model tests. The remaining authorization and evaluation
+limitations are carried into Week 8; do not connect the MCP prototype to real
+student records until authentication and per-student authorization are in
+place.
