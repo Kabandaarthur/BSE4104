@@ -13,13 +13,14 @@ no-evidence behaviour instead of crashing.
 
 import os
 import re
+from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 import observability
-from indexer import COLLECTION_NAME, DEFAULT_INDEX_DIR, _open_collection
+from indexer import DEFAULT_INDEX_DIR, _open_collection
 from embeddings import get_embedding_function
 
 load_dotenv()
@@ -91,11 +92,18 @@ def _retrieve(query, top_k, index_dir, embedding_function):
         observability.annotate(short_circuit=short_circuit)
         return []
 
-    with observability.stage("retrieval.open_index"):
-        collection = _open_collection(
-            index_dir, embedding_function=embedding_function or get_embedding_function()
-        )
+    with ExitStack() as stack:
+        with observability.stage("retrieval.open_index"):
+            collection = stack.enter_context(
+                _open_collection(
+                    index_dir,
+                    embedding_function=embedding_function or get_embedding_function(),
+                )
+            )
+        return _retrieve_from_collection(query, top_k, collection)
 
+
+def _retrieve_from_collection(query, top_k, collection):
     # The query is embedded inside collection.query(), so this stage's
     # latency includes the embedding call (the API round-trip for Gemini).
     with observability.stage("retrieval.vector_query") as query_span:

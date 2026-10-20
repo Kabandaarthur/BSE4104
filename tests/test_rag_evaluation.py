@@ -6,17 +6,21 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from fastapi.testclient import TestClient
+from indexer import build_index
 from main import app
 from orchestrator import TurnResult
+from retriever import retrieve
+from test_retrieval import StubEmbeddingFunction
 
 client = TestClient(app)
 
 USE_REAL_MODEL = os.getenv("RAG_EVAL_LIVE", "0") == "1"
 
 
-def _fake_call_model(system_prompt, user_message):
+def _fake_call_model(system_prompt, user_message, index_dir, embedding_function):
     """Stub the model, keep retrieval real.
 
     Week 5 moved retrieval *inside* the loop as the retrieve_evidence tool,
@@ -26,10 +30,14 @@ def _fake_call_model(system_prompt, user_message):
     still runs the real retriever and reports the sources it found, but
     returns the same TurnResult shape the bounded loop produces.
     """
-    from retriever import RetrievalError, retrieve
+    from retriever import RetrievalError
 
     try:
-        chunks = retrieve(user_message)
+        chunks = retrieve(
+            user_message,
+            index_dir=index_dir,
+            embedding_function=embedding_function,
+        )
     except RetrievalError:
         chunks = []
 
@@ -46,12 +54,38 @@ def _fake_call_model(system_prompt, user_message):
     return TurnResult(reply=reply, sources=sources, stop_reason="goal_satisfied")
 
 
-@pytest.fixture(autouse=True)
-def local_model(monkeypatch):
-    if not USE_REAL_MODEL:
-        import main as main_module
+@pytest.fixture(scope="module")
+def local_rag_index(tmp_path_factory):
+    index_dir = tmp_path_factory.mktemp("rag-evaluation") / "index"
+    embedding_function = StubEmbeddingFunction()
+    build_index(index_dir=index_dir, embedding_function=embedding_function)
+    return index_dir, embedding_function
 
-        monkeypatch.setattr(main_module, "call_model", _fake_call_model)
+
+@pytest.fixture(autouse=True)
+def local_model(monkeypatch, local_rag_index):
+    import main as main_module
+    import orchestrator as orchestrator_module
+
+    index_dir, embedding_function = local_rag_index
+
+    def isolated_retrieve(query, **kwargs):
+        return retrieve(
+            query,
+            index_dir=index_dir,
+            embedding_function=embedding_function,
+            **kwargs,
+        )
+
+    monkeypatch.setattr(orchestrator_module, "retrieve", isolated_retrieve)
+    if not USE_REAL_MODEL:
+        monkeypatch.setattr(
+            main_module,
+            "call_model",
+            lambda system_prompt, user_message: _fake_call_model(
+                system_prompt, user_message, index_dir, embedding_function
+            ),
+        )
 
 
 # --- Phrases that indicate an honest "I can't answer this from what I have" ---

@@ -14,6 +14,7 @@ Run the pipeline with:
 """
 
 import argparse
+from contextlib import contextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -41,31 +42,40 @@ def _chunk_id(chunk):
     return f"{chunk.source}::chunk-{chunk.chunk_index:03d}"
 
 
-def _open_collection(index_dir, reset=False, embedding_function=None):
+@contextmanager
+def _open_collection(index_dir, reset=False, embedding_function=None, create=True):
     import chromadb
 
     index_dir = Path(index_dir)
-    index_dir.mkdir(parents=True, exist_ok=True)
+    if create:
+        index_dir.mkdir(parents=True, exist_ok=True)
     client = chromadb.PersistentClient(path=str(index_dir))
-    if reset:
-        try:
-            client.delete_collection(COLLECTION_NAME)
-        except Exception:
-            pass
-    kwargs = {
-        "name": COLLECTION_NAME,
-        "metadata": {"hnsw:space": "cosine"},
-    }
-    if embedding_function is not None:
-        kwargs["embedding_function"] = embedding_function
     try:
-        return client.get_or_create_collection(**kwargs)
-    except ValueError as error:
-        # Chroma persists the embedding function with each collection. Reuse
-        # that function for an existing index built with another provider.
-        if reset or "embedding function" not in str(error).lower():
-            raise
-        return client.get_collection(COLLECTION_NAME)
+        if reset:
+            try:
+                client.delete_collection(COLLECTION_NAME)
+            except Exception:
+                pass
+        if not create:
+            collection = client.get_collection(COLLECTION_NAME)
+        else:
+            kwargs = {
+                "name": COLLECTION_NAME,
+                "metadata": {"hnsw:space": "cosine"},
+            }
+            if embedding_function is not None:
+                kwargs["embedding_function"] = embedding_function
+            try:
+                collection = client.get_or_create_collection(**kwargs)
+            except ValueError as error:
+                # Chroma persists the embedding function with each collection.
+                # Reuse the stored function when opening an existing index.
+                if reset or "embedding function" not in str(error).lower():
+                    raise
+                collection = client.get_collection(COLLECTION_NAME)
+        yield collection
+    finally:
+        client.close()
 
 
 def build_index(
@@ -83,48 +93,47 @@ def build_index(
     embedding_function defaults to Gemini (src/embeddings.py); pass a stub
     to build the index without network/API access (used in tests).
     """
-    collection = _open_collection(
+    with _open_collection(
         index_dir,
         reset=force,
         embedding_function=embedding_function or get_embedding_function(),
-    )
+    ) as collection:
+        try:
+            chunks, per_source = chunk_corpus(corpus_dir, chunk_size=chunk_size, overlap=overlap)
+        except ChunkerError as error:
+            raise IndexError(str(error)) from error
 
-    try:
-        chunks, per_source = chunk_corpus(corpus_dir, chunk_size=chunk_size, overlap=overlap)
-    except ChunkerError as error:
-        raise IndexError(str(error)) from error
+        if not chunks:
+            raise IndexError("No chunks produced — is the corpus empty?")
 
-    if not chunks:
-        raise IndexError("No chunks produced — is the corpus empty?")
+        if collection.count() > 0 and not force:
+            return {
+                "status": "already-built",
+                "sources": sorted(per_source),
+                "chunks": per_source,
+                "total": collection.count(),
+            }
 
-    if collection.count() > 0 and not force:
+        ids = [_chunk_id(chunk) for chunk in chunks]
+        documents = [chunk.text for chunk in chunks]
+        metadatas = [
+            {
+                "source": chunk.source,
+                "title": chunk.title,
+                "kind": chunk.kind,
+                "heading": chunk.heading,
+                "chunk_index": chunk.chunk_index,
+            }
+            for chunk in chunks
+        ]
+        collection.upsert(ids=ids, documents=documents, metadatas=metadatas)
+
         return {
-            "status": "already-built",
+            "status": "built",
             "sources": sorted(per_source),
             "chunks": per_source,
-            "total": collection.count(),
+            "total": len(chunks),
         }
-
-    ids = [_chunk_id(chunk) for chunk in chunks]
-    documents = [chunk.text for chunk in chunks]
-    metadatas = [
-        {
-            "source": chunk.source,
-            "title": chunk.title,
-            "kind": chunk.kind,
-            "heading": chunk.heading,
-            "chunk_index": chunk.chunk_index,
-        }
-        for chunk in chunks
-    ]
-    collection.upsert(ids=ids, documents=documents, metadatas=metadatas)
-
-    return {
-        "status": "built",
-        "sources": sorted(per_source),
-        "chunks": per_source,
-        "total": len(chunks),
-    }
 
 
 def index_status(index_dir=DEFAULT_INDEX_DIR):
@@ -137,13 +146,10 @@ def index_status(index_dir=DEFAULT_INDEX_DIR):
     if not index_dir.is_dir():
         return None
     try:
-        import chromadb
-
-        client = chromadb.PersistentClient(path=str(index_dir))
-        collection = client.get_collection(COLLECTION_NAME)
+        with _open_collection(index_dir, create=False) as collection:
+            count = collection.count()
     except Exception:
         return None
-    count = collection.count()
     if count == 0:
         return None
     return {"status": "built", "total": count, "collection": COLLECTION_NAME}

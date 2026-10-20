@@ -1,243 +1,167 @@
 # University Student-Support Case Agent
 
-**BSE4104 — Emerging Trends in Software Engineering**
-**AI-Native & Agentic Engineering Capstone Project**
-**Makerere University, College of Computing and Information Sciences**
-**Academic Year 2026/2027 | 31 August 2026 – 23 October 2026**
+An AI-assisted student-support prototype for answering procedural questions
+from a curated university knowledge base, looking up synthetic support cases,
+and preparing support tickets for staff review.
 
----
+## What the system does
 
-## 1. Project Purpose
+- **Answers information questions** using retrieval-augmented generation (RAG)
+  over the registered knowledge corpus and returns source references.
+- **Looks up a support case** through a deterministic mock tool.
+- **Prepares support tickets** through a deterministic mock tool. High-urgency
+  and examination-related tickets are held for staff approval.
+- **Runs a bounded agent loop** that can select approved tools, inspect their
+  results, and stop safely on success, approval, or error.
+- **Provides a web interface and API** with FastAPI, plus a local CLI and a
+  limited MCP JSON-RPC stdio adapter.
 
-This project builds a bounded AI agent for Makerere student support. Its purpose
-is to provide grounded procedural guidance from approved university sources,
-while keeping sensitive decisions and actions outside the system's authority.
-The agent helps a Makerere student:
+### Data and authorization boundary
 
-1. Get **grounded answers** to handbook/course procedure questions (registration deadlines, retakes, course-add/drop windows, etc.) — with a citation back to the source document.
-2. **Check the status** of an existing support case using a case ID.
-3. **Raise a new support ticket** by describing an issue in plain language, when self-service doesn't resolve it.
+This is a prototype, not an official university service. Case and ticket tools
+use synthetic mock records. The web chat and MCP adapter do not authenticate a
+student or enforce end-to-end ownership for real case records. **Do not connect
+the system to real student records or enter real personal information.**
 
-**What the agent must never do:** make or influence admissions, grading, disciplinary or fee decisions. Those stay entirely human and out of the agent's action space — see `docs/requirements/` for the full AI Boundary Matrix.
+A model provider is needed for conversational responses. With the default
+Gemini configuration, chat messages and retrieved public-corpus excerpts are
+sent to the configured Gemini API; this may use API quota or incur charges.
+Never put credentials or personal information in prompts, commits, or issue
+reports.
 
-This is not "a chatbot." It is a bounded, multi-step, tool-using system built progressively over 8 weeks — model → RAG → tools → agent loop → memory → evaluation → hardening. Every week adds one capability on top of a tested foundation from the week before.
+## How the project is assembled
 
+```text
+Student
+  |
+  v
+FastAPI web UI / API or CLI
+  |
+  v
+Bounded agent loop ---- versioned system prompts
+  |                    prompts/v1.0.md ... prompts/v4.0.md
+  +---- retrieve_evidence ---- Chroma index <---- knowledge corpus
+  +---- get_case_status ------ synthetic mock case store
+  +---- create_support_ticket synthetic mock ticket store
+  |
+  v
+Configured foundation-model provider
 
----
+MCP stdio adapter exposes a limited tool interface for local clients.
+```
 
-## 2. Tech Stack
+The code keeps deterministic behavior—input checks, tool validation, retrieval
+plumbing, session handling, approval status, and agent limits—in application
+modules. The foundation model interprets the request and produces the
+conversational response; it is not a system of record or an authority for
+university decisions.
 
-| Layer | Choice | Why |
-|---|---|---|
-| Backend / agent logic | **Python** | Best-supported ecosystem for LLM SDKs, RAG (ChromaDB/LlamaIndex), and agent tooling — matches our course reference books (Huyen, Lanham) |
-| API framework | **FastAPI** | Lightweight, fast to wire a chat endpoint to |
-| Frontend / chat interface | **TBD (Week 2)** — likely Streamlit for speed, or a simple HTML/JS page calling the FastAPI backend | Decide once the baseline model call works |
-| Foundation model | **TBD (Week 2)** — see `docs/evaluation/` for the Model Selection Note once written | Final choice documented with cost/latency/privacy rationale |
-| Vector store (RAG, Week 3+) | **ChromaDB** (local, decided Week 3) with **Gemini embeddings** (`gemini-embedding-2`, same API key as the chat model); optional local ONNX fallback | Free, local, simple to set up for a 10–50 document corpus |
+## Repository layout
 
----
+| Path | Contents |
+|---|---|
+| `src/main.py` | FastAPI application, browser UI/API routes, and CLI entry point |
+| `src/orchestrator.py` | Bounded plan/act/observe agent loop |
+| `src/model_client.py` | Foundation-model provider configuration and tool declarations |
+| `src/prompt_loader.py`, `prompts/` | Prompt loading and versioned prompt specifications |
+| `src/chunker.py`, `src/fetch_corpus.py` | Corpus extraction, provenance, and text chunking |
+| `src/indexer.py`, `src/embeddings.py`, `src/retriever.py` | Embedding, Chroma indexing, and evidence retrieval |
+| `src/tools/` | Tool contracts, validation, and synthetic mock case/ticket store |
+| `src/session_store.py` | Optional short-lived active-case session state |
+| `src/mcp/` | JSON-RPC stdio adapter and tool schemas |
+| `src/static/` | Browser chat page, JavaScript, and styles |
+| `knowledge/raw/`, `knowledge/text/` | Source files and extracted corpus text |
+| `knowledge/corpus.json`, `knowledge/source_register.md` | Corpus manifest and provenance register |
+| `knowledge/index/` | Persistent local Chroma vector index |
+| `tests/` | Unit, integration, regression, guardrail, and trace tests |
+| `docs/` | Architecture, requirements, evaluation, and project documentation |
+| `evidence/traces/` | Sanitized scripted trace and test evidence |
 
-## 3. Weekly Rhythm — What "Done" Looks Like Each Week
+## Clone and set up
 
-Every week has: a focus area, required activities, and specific deliverables due Friday. Full 8-week breakdown lives in the assignment brief; here's the short version so nobody has to go digging:
-
-| Week | Dates | Focus | Key Deliverables |
-|---|---|---|---|
-| 1 ✅ | 31 Aug – 4 Sept | Problem framing & requirements | Project Charter, user stories, AI Boundary Matrix, architecture diagram |
-| 2 ✅ | 7 – 11 Sept | Foundation model & prompting | Working baseline model call, Model Selection Note, Prompt Spec v1.0, 10-case eval table |
-| 3 ✅ | 14 – 18 Sept | Context engineering & RAG | Corpus + retrieval pipeline, 15-case RAG eval |
-| 4 ✅ | 21 – 25 Sept | Tools & function calling | ≥2 tools, tool catalogue, failure/authorization tests |
-| 5 🔄 | 28 Sept – 2 Oct | Bounded agent | Agent loop, task contract, 3 execution traces |
-| 6 | 5 – 9 Oct | Memory, state & interoperability | State model, memory design note, integration/MCP spec |
-| 7 ✅* | 12 – 16 Oct | Evaluation & guardrails | 30-case set, deterministic guardrails, partial live pilot; final scoring and request traces remain incomplete |
-| 8 | 19 – 23 Oct | Hardening & demo | Final release, 8–12 page report, live presentation |
-
-`✅*` means the Week 7 deterministic guardrail implementation is complete; the
-30-case evaluation and full Week 7 exit gate remain incomplete.
-
-**Every Friday:** whoever owns that week's progress report posts it to `docs/weekly-reports/`, links the relevant commits/PRs and ClickUp tasks, and includes an individual contribution summary for each member.
-
----
-
-## 4. How We Work — Git & ClickUp
-
-- **ClickUp is the source of truth for tasks.** If it's not in ClickUp with an owner and a due date, it doesn't count as planned work.
-- **Branch per feature/task**, not directly on `main`. Suggested naming: `week2-model-integration`, `week3-rag-pipeline`, `week4-tool-calling`, etc.
-- **Commit messages should say what and why**, especially for `prompts/` — since prompt version history is graded evidence, not just a nice-to-have.
-- **Open a PR before merging into `main`**, even solo — it creates a reviewable trail and keeps `main` stable for demos.
-- **Never commit secrets.** Real API keys go in a local `.env` (gitignored); only placeholder variable names go in `.env.example`.
-
----
-
-## 5. First-Time Setup
-
-The first-time setup creates an isolated Python environment, installs the
-application and RAG dependencies, and configures the model provider. The
-commands below are for Windows PowerShell. Python 3.12 or newer is recommended.
+The following commands use Windows PowerShell. Python 3.12 or newer is
+recommended.
 
 ```powershell
 git clone https://github.com/Kabandaarthur/BSE4104.git
 Set-Location BSE4104
 
-# Create and activate an isolated environment.
 py -3 -m venv .venv
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
 .\.venv\Scripts\Activate.ps1
-
-# Install application, RAG, corpus-extraction and test dependencies.
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 
-# Create local configuration. Never commit .env or real API keys.
-Copy-Item .env.example .env
+# Create a local configuration file only if one does not already exist.
+if (!(Test-Path .env)) { Copy-Item .env.example .env }
 notepad .env
 ```
 
-The optional ONNX embedding fallback is local after its model download:
-`RAG_EMBEDDING_PROVIDER=onnx`. Gemini embeddings and chat calls require a valid
-`GEMINI_API_KEY`; never place a real key in `.env.example` or source control.
+Set `GEMINI_API_KEY` in your local `.env` for the default Gemini chat and
+embedding configuration. Keep `.env` private; it is ignored by Git. The
+optional ONNX embedding provider can run locally after downloading its model,
+but the configured chat provider still needs to be available.
 
-## 6. Corpus and RAG Index
-
-The checked-in extracted corpus is under `knowledge/text/`, with raw public
-downloads under `knowledge/raw/` and provenance in `knowledge/corpus.json`.
-To refresh the corpus or rebuild the source register:
+The repository includes the corpus and a persistent Chroma index. Rebuild the
+index only after changing the corpus or embedding configuration:
 
 ```powershell
-python src/fetch_corpus.py
-python src/fetch_corpus.py --verify
-python src/fetch_corpus.py --register
-```
-
-Build and inspect the local ChromaDB index:
-
-```powershell
-python src/indexer.py --force
 python src/indexer.py --status
+python src/indexer.py --force
 ```
 
-The persistent index is stored under `knowledge/index/`. Rebuild it after the
-corpus or embedding provider changes.
+## Run the automated tests
 
-## 7. Running the Application
+Run the full suite from the repository root:
 
 ```powershell
-# Interactive CLI
-python src/main.py
-
-# Single question
-python src/main.py "What are the penalties for examination malpractice?"
-
-# FastAPI server
-uvicorn main:app --app-dir src --reload
-
-# FastAPI server with optional case-session memory
-$env:SESSIONS_ENABLED = "true"
-uvicorn main:app --app-dir src --reload
+python -m pytest -q
 ```
 
-Open `http://127.0.0.1:8000/` for the browser chat interface. It displays
-grounded sources and tool actions returned by the agent. Session memory is
-off by default; enable it with the command above to keep an active case ID
-between messages. The API also exposes `GET /health`, `POST /chat`, and
-`POST /session/reset` when sessions are enabled. Example request body:
+Run an individual test module while developing:
 
-```json
-{"message":"What are the penalties for examination malpractice?"}
+```powershell
+python -m pytest tests/test_health.py -q
+python -m pytest tests/test_retrieval.py -q
+python -m pytest tests/test_guardrails.py -q
 ```
 
----
+Most tests use deterministic or stubbed providers and do not require a live
+model API key. Credential-dependent tests may be skipped when live-test
+configuration is absent. A skipped test is not a passing live-model evaluation.
 
-## 8. Week 5: Bounded Agent Loop
+## Run a local live demo
 
-One student message is driven through a bounded
-**Sense → Plan → Act → Observe → Stop** loop in `src/orchestrator.py`. The
-model chooses its next action each iteration from an allow-list of three
-tools, or stops:
+1. Complete setup and configure a valid model-provider key in `.env`.
+2. Start the local web server from the repository root:
 
-1. `get_case_status` — read-only lookup of an existing case/ticket by ID.
-2. `create_support_ticket` — drafts and stores a structured support ticket
-   when procedural guidance cannot resolve the inquiry. `EXAMINATION` /
-   `HIGH` tickets are held for staff approval.
-3. `retrieve_evidence` — searches the official handbook/policy corpus from
-   *inside* the loop, so the model can decide partway through a run that it
-   needs to check what policy says.
+   ```powershell
+   .\.venv\Scripts\Activate.ps1
+   uvicorn main:app --app-dir src --host 127.0.0.1 --port 8000
+   ```
 
-### Stop conditions
+3. Open <http://127.0.0.1:8000/> in a browser. The health endpoint is
+   <http://127.0.0.1:8000/health>.
+4. Try a non-personal information question, for example:
+   **“What does the university guidance say about late registration?”**
+5. Inspect the returned answer, source references, and any tool activity.
+   Stop the server with **Ctrl+C**.
 
-Every run ends on exactly one of four named conditions, reported as
-`TurnResult.stop_reason` and as a structured entry in `TurnResult.trace`:
+The demo calls the configured model provider and may use API quota or incur
+charges. Only use public, non-sensitive questions. Sessions are off by default;
+enabling them stores an active synthetic case ID, but does not authenticate a
+student. Case lookup and ticket creation use the local synthetic mock store,
+not a university database.
 
-| `stop_reason` | Trigger | What the student gets |
-|---|---|---|
-| `goal_satisfied` | Status reported, evidence cited, ticket created, or request refused | The model's final reply |
-| `round_limit_reached` | `MAX_TOOL_ROUNDS` hit without resolution | A human-readable "I could not fully resolve this" message — never a silent failure |
-| `approval_pending` | A ticket tripped the Human-in-the-Loop gate | Confirmation the request is pending staff review |
-| `tool_error` | A tool failed twice (the single allowed re-plan is spent) | An explanation that a service is unavailable — never a fabricated result |
+For a one-turn CLI run instead of the browser:
 
-```bash
-# one turn, with the loop's own evidence printed underneath the reply
-python src/main.py "What's the status of case CAS-2026-001?"
-
-# run the stop-condition and Plan/Decide tests (no network)
-python -m pytest tests/test_stop_conditions.py -v
+```powershell
+python src/main.py "What does the university guidance say about late registration?"
 ```
 
-### Documentation
+## Additional documentation
 
-* **Prompt Specification (current)**: [`prompts/v4.0.md`](prompts/v4.0.md) — the Plan/Decide prompt
-* **Prompt Specification history**: [`prompts/`](prompts) — v1.0, v2.0, v3.0 (frozen)
-* **Agent Task Contract**: `docs/architecture/Agent_Task_Contract.pdf`
-* **Week 4 Tool Catalogue**: `docs/architecture/University_Student_Support_Case_Agent_Week4_Tool_Catalogue.pdf`
-* **Human-in-the-Loop Policy**: `docs/requirements/BSE4104_Human_in_the_Loop_Authorization_Policy.pdf`
-* **Week 4 Progress Report**: `docs/weekly-reports/WEEK-4-PROGRESS-REPORT.pdf`
-* **Week 5 traces**: `evidence/traces/week5/`
-
----
-
-## 9. Week 6: MCP Interoperability Adapter
-
-The two Week 4 tools are exposed to external MCP clients over stdio
-(JSON-RPC 2.0, protocol **2025-06-18**) through `src/mcp/`. The adapter reuses
-the **same schemas** as the internal Gemini function declarations
-(`src/model_client.py`) and the **same error model** as the Week 4 Tool
-Catalogue, and the internal application has no MCP dependency — only
-`src/mcp/server.py` knows about the transport.
-
-```bash
-# speak MCP over stdio (an mcpServers.command entry point)
-cd src && python -m mcp.server
-# compatibility tests (no network)
-python -m pytest tests/test_mcp_adapter.py -v
-```
-
-### Documentation
-
-* **MCP Capability Specification**: `docs/architecture/MCP_CAPABILITY_SPEC.md`
-* **Interoperability Test Report**: `docs/evaluation/MCP_INTEROPERABILITY_REPORT.md`
-* **Week 6 State Model & Contract**: `docs/architecture/Week6_State_Model_and_Contract.pdf`
-* **Session memory code**: `src/session_store.py`, cookie sessions in `src/main.py`
-
----
-
-## 10. Week 7: Evaluation and Guardrails
-
-The Week 7 case set contains 30 synthetic scenarios across six categories.
-Deterministic tool-boundary guardrails are implemented and tested, but the
-30-case scored evaluation is incomplete: the live pilot was interrupted by
-provider rate limits, and authorization and request-level trace coverage have
-not been verified. Test-run output is checked in; it is not a substitute for
-sanitized per-request traces.
-
-* **Evaluation cases**: [`docs/evaluation/WEEK-7-EVALUATION-CASES.json`](docs/evaluation/WEEK-7-EVALUATION-CASES.json)
-* **Results and limitations**: [`docs/evaluation/WEEK-7-EVALUATION-RESULTS.md`](docs/evaluation/WEEK-7-EVALUATION-RESULTS.md)
-* **Guardrail matrix**: [`docs/evaluation/WEEK-7-GUARDRAILS.md`](docs/evaluation/WEEK-7-GUARDRAILS.md)
-* **Failure catalogue**: [`docs/evaluation/WEEK-7-FAILURE-CATALOGUE.md`](docs/evaluation/WEEK-7-FAILURE-CATALOGUE.md)
-* **Progress report**: [`docs/weekly-reports/Week_7_Progress_Report.md`](docs/weekly-reports/Week_7_Progress_Report.md)
-* **Test evidence**: `evidence/traces/week7/pytest-guardrails-run.txt` and `evidence/traces/week7/pytest-full-run.txt`
-
-The recorded regression run is **434 passed, 6 skipped**; the skips are
-credential-gated live-model tests. The remaining authorization and evaluation
-limitations are carried into Week 8; do not connect the MCP prototype to real
-student records until authentication and per-student authorization are in
-place.
+- [Current prompt specification](prompts/v4.0.md)
+- [MCP capability specification](docs/architecture/MCP_CAPABILITY_SPEC.md)
+- [MCP interoperability report](docs/evaluation/MCP_INTEROPERABILITY_REPORT.md)
+- [Test findings](docs/WEEK_8_TEST_FINDINGS.md)
+- [Final engineering report](docs/FINAL_ENGINEERING_REPORT.md)

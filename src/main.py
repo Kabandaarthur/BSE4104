@@ -234,6 +234,13 @@ def chat_endpoint(
 def _handle_chat(
     request: ChatRequest, http_request: Request, response: Response
 ) -> ChatResponse:
+    if not request.message.strip():
+        return ChatResponse(
+            reply="Please enter a question or describe the support you need.",
+            stop_reason="goal_satisfied",
+            iterations=0,
+        )
+
     store = None
     session_id = None
     active_case_id = None

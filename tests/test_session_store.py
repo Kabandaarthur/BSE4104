@@ -20,7 +20,9 @@ Run: pytest tests/test_session_store.py -v
 """
 
 import json
+import logging
 import os
+import re
 import threading
 
 import pytest
@@ -71,6 +73,33 @@ def test_no_temp_files_left_after_normal_use(store, store_path):
     store.reset(record["session_id"])
     leftovers = [n for n in os.listdir(os.path.dirname(store_path)) if n.endswith(".tmp")]
     assert leftovers == []
+
+
+def test_active_case_access_is_audited_without_raw_ids_or_case_values(
+    store, caplog
+):
+    caplog.set_level(logging.INFO, logger="rag")
+    record = store.get_or_create(None)
+    session_id = record["session_id"]
+    case_id = "CAS-2026-001"
+
+    store.set_active_case_id(session_id, case_id)
+    assert store.get_active_case_id(session_id) == case_id
+    store.reset(session_id)
+
+    audit_lines = [
+        line for line in caplog.text.splitlines() if "session_audit " in line
+    ]
+    assert len(audit_lines) == 4
+    assert "event=active_case_read" in audit_lines[0]
+    assert "event=active_case_write" in audit_lines[1]
+    assert "event=active_case_read" in audit_lines[2]
+    assert "event=active_case_clear" in audit_lines[3]
+    for line in audit_lines:
+        assert re.search(r"timestamp=\d{4}-\d{2}-\d{2}T[^ ]+\+00:00", line)
+        assert re.search(r"session_ref=[0-9a-f]{16}", line)
+        assert session_id not in line
+        assert case_id not in line
 
 
 def test_store_file_is_always_complete_valid_json(store, store_path):

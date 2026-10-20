@@ -21,8 +21,12 @@ sanitised.
 
 ## Release decision
 
-No critical safety or authorization failure remains open. The high-severity
-authorization, privacy, tool-failure, and provider-failure cases above all have
-deterministic retests. Live-model cases remain credential-gated and are not
-allowed to change the default `pytest -q -rs` result.
-
+The listed deterministic guardrail and provider-failure regressions are
+retested, but **end-to-end own-case authorization remains open**. The handler
+can check ownership only when a trusted `session_student_id` is supplied; the
+current `/chat` path has no authenticated student identity and does not supply
+one. A cookie session ID is not student authentication. Do not connect this
+prototype to real student records until identity and per-student authorization
+are implemented and verified end to end. Keep demonstrations on synthetic
+data and treat live-model cases as unverified unless they have been run and
+scored with approved credentials.

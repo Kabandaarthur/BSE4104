@@ -37,6 +37,8 @@ Design decisions, each tied to a contract requirement
   empty.
 * Nothing touches the disk until the first write, so an application that
   never enables sessions never creates a file.
+* Active-case reads, writes and clears emit UTC audit events with a truncated
+  hash of the session ID. The bearer session ID and case ID are never logged.
 
 What is deliberately NOT stored: approval status. A remembered case id is
 only an identifier. Whether the matching ticket is PENDING_STAFF_APPROVAL
@@ -50,6 +52,7 @@ or move to SQLite if that ever becomes a requirement.
 """
 
 import contextlib
+import hashlib
 import json
 import logging
 import os
@@ -58,6 +61,7 @@ import tempfile
 import threading
 import time
 import uuid
+from datetime import datetime, timezone
 from typing import Callable, Optional
 
 logger = logging.getLogger("rag")
@@ -155,6 +159,22 @@ class SessionStore:
             return None
         return record
 
+    @staticmethod
+    def _audit_active_case(action: str, session_id: object) -> None:
+        """Log session-state access without exposing the bearer session ID or case ID."""
+        session_ref = (
+            hashlib.sha256(session_id.encode("utf-8")).hexdigest()[:16]
+            if isinstance(session_id, str)
+            else "invalid"
+        )
+        timestamp = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+        logger.info(
+            "session_audit event=%s timestamp=%s session_ref=%s",
+            action,
+            timestamp,
+            session_ref,
+        )
+
     # -- interface defined by tests/test_state_contract.py --------------
 
     def get_or_create(self, session_id: Optional[str]) -> dict:
@@ -166,7 +186,7 @@ class SessionStore:
         expiry window forward."""
         with self._lock:
             sessions = self._load()
-            purged = self._purge_expired(sessions)
+            self._purge_expired(sessions)
 
             record = self._live_record(sessions, session_id)
             now = self._now()
@@ -183,6 +203,7 @@ class SessionStore:
                 sessions[new_id] = record
 
             self._save(sessions)
+            self._audit_active_case("active_case_read", record["session_id"])
             return dict(record)
 
     def get_active_case_id(self, session_id: str) -> Optional[str]:
@@ -193,6 +214,8 @@ class SessionStore:
             if self._purge_expired(sessions):
                 self._save(sessions)
             record = self._live_record(sessions, session_id)
+            if isinstance(session_id, str):
+                self._audit_active_case("active_case_read", session_id)
             return None if record is None else record["active_case_id"]
 
     def set_active_case_id(self, session_id: str, case_id: str) -> None:
@@ -212,10 +235,12 @@ class SessionStore:
                 if purged:
                     self._save(sessions)
                 logger.info("set_active_case_id ignored: no live session.")
+                self._audit_active_case("active_case_write_ignored", session_id)
                 return
             record["active_case_id"] = case_id
             record["last_updated_at"] = self._now()
             self._save(sessions)
+            self._audit_active_case("active_case_write", session_id)
 
     def reset(self, session_id: str) -> None:
         """Clear active_case_id only. The session id itself stays valid.
@@ -227,10 +252,12 @@ class SessionStore:
             if record is None:
                 if purged:
                     self._save(sessions)
+                self._audit_active_case("active_case_clear_ignored", session_id)
                 return
             record["active_case_id"] = None
             record["last_updated_at"] = self._now()
             self._save(sessions)
+            self._audit_active_case("active_case_clear", session_id)
 
     def is_expired(self, session_id: str) -> bool:
         """True if the session exists but was last touched more than
