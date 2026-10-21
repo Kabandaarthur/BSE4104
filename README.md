@@ -56,26 +56,6 @@ modules. The foundation model interprets the request and produces the
 conversational response; it is not a system of record or an authority for
 university decisions.
 
-## Repository layout
-
-| Path | Contents |
-|---|---|
-| `src/main.py` | FastAPI application, browser UI/API routes, and CLI entry point |
-| `src/orchestrator.py` | Bounded plan/act/observe agent loop |
-| `src/model_client.py` | Foundation-model provider configuration and tool declarations |
-| `src/prompt_loader.py`, `prompts/` | Prompt loading and versioned prompt specifications |
-| `src/chunker.py`, `src/fetch_corpus.py` | Corpus extraction, provenance, and text chunking |
-| `src/indexer.py`, `src/embeddings.py`, `src/retriever.py` | Embedding, Chroma indexing, and evidence retrieval |
-| `src/tools/` | Tool contracts, validation, and synthetic mock case/ticket store |
-| `src/session_store.py` | Optional short-lived active-case session state |
-| `src/mcp/` | JSON-RPC stdio adapter and tool schemas |
-| `src/static/` | Browser chat page, JavaScript, and styles |
-| `knowledge/raw/`, `knowledge/text/` | Source files and extracted corpus text |
-| `knowledge/corpus.json`, `knowledge/source_register.md` | Corpus manifest and provenance register |
-| `knowledge/index/` | Persistent local Chroma vector index |
-| `tests/` | Unit, integration, regression, guardrail, and trace tests |
-| `docs/` | Architecture, requirements, evaluation, and project documentation |
-| `evidence/traces/` | Sanitized scripted trace and test evidence |
 
 ## Clone and set up
 
@@ -109,25 +89,6 @@ python src/indexer.py --status
 python src/indexer.py --force
 ```
 
-## Run the automated tests
-
-Run the full suite from the repository root:
-
-```powershell
-python -m pytest -q
-```
-
-Run an individual test module while developing:
-
-```powershell
-python -m pytest tests/test_health.py -q
-python -m pytest tests/test_retrieval.py -q
-python -m pytest tests/test_guardrails.py -q
-```
-
-Most tests use deterministic or stubbed providers and do not require a live
-model API key. Credential-dependent tests may be skipped when live-test
-configuration is absent. A skipped test is not a passing live-model evaluation.
 
 ## Run a local live demo
 
@@ -157,11 +118,3 @@ For a one-turn CLI run instead of the browser:
 ```powershell
 python src/main.py "What does the university guidance say about late registration?"
 ```
-
-## Additional documentation
-
-- [Current prompt specification](prompts/v4.0.md)
-- [MCP capability specification](docs/architecture/MCP_CAPABILITY_SPEC.md)
-- [MCP interoperability report](docs/evaluation/MCP_INTEROPERABILITY_REPORT.md)
-- [Test findings](docs/WEEK_8_TEST_FINDINGS.md)
-- [Final engineering report](docs/FINAL_ENGINEERING_REPORT.md)
